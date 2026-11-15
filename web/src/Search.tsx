@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from './api'
+import Markdown from './Markdown'
 
 type News = { id: number; source: string; link: string; title: string; summary?: string; published_at: string }
 type Market = {
@@ -195,7 +196,7 @@ export default function Search({ greekMode = false }: { greekMode?: boolean }) {
               ? <p className="search-summary-error" role="status">{data.summary.error}</p>
               : <section className="search-ai-summary" aria-label="AI summary">
                   <h3>AI summary</h3>
-                  <p>{data.summary.text}</p>
+                  <Markdown text={data.summary.text} />
                   <h4>Sources</h4>
                   <ul>
                     {data.summary.sources.map((source) => (

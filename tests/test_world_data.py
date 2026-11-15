@@ -12,18 +12,23 @@ class CommodityFuturesTest(unittest.TestCase):
     def setUp(self):
         world_data.commodity_futures.cache_clear()
 
-    def test_same_unit_pair_gets_spread(self):
-        fake = {"BZ=F": ("USD", closes(100, 95)), "CL=F": ("USD", closes(90, 88))}
+    def test_brent_wti_spread_with_physical_units(self):
+        fake = {"BZ=F": ("USD", closes(100, 95)), "CL=F": ("USD", closes(90, 88)), "DBL=F": (None, closes(94, 93)),
+                "HO=F": ("USD", closes(4, 4)), "RB=F": ("USD", closes(2.5, 2.6))}
         with patch.object(world_data, "_yahoo_closes", side_effect=lambda s, d: fake[s]):
             out = world_data.commodity_futures("oil")
-        self.assertEqual(out["spread"], {"name": "Brent - WTI", "value": 7.0, "unit": "USD"})
-        self.assertEqual([c["settlement"] for c in out["contracts"]], ["cash", "physical"])
-        self.assertEqual(out["contracts"][0]["change_pct"], -5.0)
+        self.assertEqual(out["spread"], {"name": "Brent crude - WTI crude", "value": 7.0, "unit": "USD/bbl"})
+        by = {c["symbol"]: c for c in out["contracts"]}
+        self.assertEqual(by["DBL=F"]["unit"], "USD/bbl")  # Yahoo omits Dubai's currency; NYMEX lists it in USD
+        self.assertEqual(by["HO=F"]["unit"], "USD/gal")
+        self.assertEqual(by["BZ=F"]["change_pct"], -5.0)
 
-    def test_mixed_units_get_no_spread(self):
-        fake = {"TTF=F": ("EUR", closes(30, 31)), "NG=F": ("USD", closes(3, 3.2))}
+    def test_no_spread_across_gas_hubs(self):
+        fake = {"TTF=F": ("EUR", closes(30, 31)), "NG=F": ("USD", closes(3, 3.2)), "JKM=F": (None, closes(11, 12))}
         with patch.object(world_data, "_yahoo_closes", side_effect=lambda s, d: fake[s]):
-            self.assertIsNone(world_data.commodity_futures("natural-gas")["spread"])
+            out = world_data.commodity_futures("natural-gas")
+        self.assertIsNone(out["spread"])
+        self.assertEqual({c["unit"] for c in out["contracts"]}, {"EUR/MWh", "USD/MMBtu"})
 
     def test_unknown_commodity_rejected(self):
         with self.assertRaises(ValueError):

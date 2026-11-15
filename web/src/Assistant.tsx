@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useApi } from './api'
+import Markdown from './Markdown'
 
 type Msg = { role: 'user' | 'model'; text: string; tools?: string[] }
 
@@ -81,7 +82,7 @@ export default function Assistant({ topic, context, greekMode = false }: { topic
         )}
         {msgs.map((m, k) => (
           <div key={k} className={`msg ${m.role}`}>
-            {m.text.split(/\n+/).map((line, j) => <p key={j}>{line}</p>)}
+            {m.role === 'model' ? <Markdown text={m.text} /> : <p>{m.text}</p>}
             {!!m.tools?.length && <p className="micro">Used {[...new Set(m.tools)].join(', ')}</p>}
           </div>
         ))}

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useApi } from './api'
+import Markdown, { Inline } from './Markdown'
 import { CommodityPriceChart, EtfTrends, YieldCurve, type CurvePoint, type Fund } from './Charts'
 import FocusPanel, { Card } from './FocusPanel'
-import { COMMODITIES, globalWeatherCountryCode, nearestCommodityBenchmarks, toWeatherEvent, type Commodity, type Contract, type GlobalWeather } from './events'
+import { COMMODITIES, globalWeatherCountryCode, regionalCommodityBenchmarks, toWeatherEvent, type Commodity, type Contract, type GlobalWeather } from './events'
 
 type Failed = { error: string }
 type News = { id: number; source: string; link: string; title: string; published_at: string }
@@ -233,7 +234,7 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
   const r = rundown.data
   const local = useFetch<{ region: string | null; news: News[]; hours: number }>(!commodityMode && coordinates
     ? `/news/local?lat=${coordinates.lat.toFixed(3)}&lon=${coordinates.lng.toFixed(3)}` : null)
-  const benchmarks = nearestCommodityBenchmarks(commodityFutures.data?.contracts ?? [], coordinates)
+  const benchmarks = regionalCommodityBenchmarks(commodityFutures.data?.contracts ?? [], coordinates)
   const us = country === 'United States of America'
   // Rundown cards mount immediately and show their own loading/error/missing state, so the card set
   // (and the grid) never changes when the fetch lands.
@@ -250,12 +251,12 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
         <div className="editorial-cols">
           <div>
             <h3>{editorial.data.headline}</h3>
-            {editorial.data.summary.split(/\n+/).map((para, k) => <p key={k}>{para}</p>)}
+            <Markdown text={editorial.data.summary} />
           </div>
           {!!editorial.data.watch.length && (
             <div>
               <p className="section-title">Watch</p>
-              <ul className="watch">{editorial.data.watch.map((w) => <li key={w}>{w}</li>)}</ul>
+              <ul className="watch">{editorial.data.watch.map((w) => <li key={w}><Inline text={w} /></li>)}</ul>
               <p className="micro">Written by Gemini from the sources on this page</p>
             </div>
           )}
@@ -360,12 +361,12 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
       )}
       {commodityMode ? (
         <>
-          <Card title={coordinates ? 'Nearest benchmark prices' : 'Regional benchmark prices'}>
+          <Card title={coordinates ? 'Benchmarks for this region' : 'Benchmark prices'}>
             {commodityFutures.loading && <p className="muted">Loading benchmark prices…</p>}
             {commodityFutures.error && <p className="error" role="alert">Benchmark prices unavailable: {commodityFutures.error}</p>}
             {commodityFutures.data && !benchmarks.length && <p className="muted">No mapped regional benchmarks are available for {COMMODITIES[commodity].toLowerCase()}.</p>}
             {benchmarks.map((contract) => <CommodityPriceChart key={contract.symbol} contract={contract} />)}
-            {!!benchmarks.length && <p className="micro">Market futures benchmarks—not retail or local physical prices. {coordinates ? 'Nearest mapped pricing point to the selected location.' : 'Showing all available mapped regional benchmarks.'}</p>}
+            {!!benchmarks.length && <p className="micro">Market futures benchmarks—not retail or local physical prices. {coordinates ? 'Contracts that price this trading region, plus global exchange references.' : 'All mapped benchmark contracts.'}</p>}
           </Card>
           <Card title={`${COMMODITIES[commodity]} ETFs · 30 days`}>
             {commodityEtfs.loading && <p className="muted">Loading funds…</p>}

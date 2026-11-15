@@ -176,42 +176,69 @@ export const COMMODITIES = {
 } as const
 export type Commodity = keyof typeof COMMODITIES
 
-// Where each benchmark prices: its delivery point, or the exchange for metals, grains, softs and livestock.
-// shortcut: New York and Chicago exchanges are nudged apart so their markers don't stack; move to real clustering if more are added.
+// Where each contract prices: its delivery or assessment point (exchange vaults/warehouses for metals).
+// shortcut: contracts sharing a point get small hand offsets so markers don't stack; move to real clustering if more are added.
 const SITES: Record<string, { place: string; lat: number; lng: number; country: string }> = {
   'BZ=F': { place: 'North Sea', lat: 57.5, lng: 1.5, country: '826' },
   'CL=F': { place: 'Cushing, Oklahoma', lat: 35.98, lng: -96.77, country: '840' },
-  'TTF=F': { place: 'Netherlands', lat: 52.37, lng: 4.9, country: '528' },
+  'DBL=F': { place: 'Arabian Gulf', lat: 25.6, lng: 55.0, country: '784' },
+  'HO=F': { place: 'New York Harbor', lat: 40.5, lng: -73.6, country: '840' },
+  'RB=F': { place: 'New York Harbor', lat: 40.5, lng: -73.6, country: '840' },
   'NG=F': { place: 'Henry Hub, Louisiana', lat: 29.96, lng: -92.03, country: '840' },
-  'GC=F': { place: 'COMEX, New York', lat: 40.71, lng: -74.01, country: '840' },
-  'SI=F': { place: 'COMEX, New York', lat: 40.71, lng: -74.01, country: '840' },
-  'HG=F': { place: 'COMEX, New York', lat: 40.71, lng: -74.01, country: '840' },
-  'KC=F': { place: 'ICE, New York', lat: 38.9, lng: -76.5, country: '840' },
-  'CC=F': { place: 'ICE, New York', lat: 38.9, lng: -76.5, country: '840' },
-  'SB=F': { place: 'ICE, New York', lat: 38.9, lng: -76.5, country: '840' },
-  'ZW=F': { place: 'CBOT, Chicago', lat: 41.88, lng: -87.63, country: '840' },
-  'ZC=F': { place: 'CBOT, Chicago', lat: 41.88, lng: -87.63, country: '840' },
-  'HE=F': { place: 'CME, Chicago', lat: 40.2, lng: -90.5, country: '840' },
-  'GF=F': { place: 'CME, Chicago', lat: 40.2, lng: -90.5, country: '840' },
-  'LE=F': { place: 'CME, Chicago', lat: 40.2, lng: -90.5, country: '840' },
+  'TTF=F': { place: 'Netherlands (TTF)', lat: 52.37, lng: 4.9, country: '528' },
+  'JKM=F': { place: 'Japan / Korea (JKM)', lat: 35.4, lng: 139.8, country: '392' },
+  'GC=F': { place: 'COMEX vaults, New York', lat: 41.2, lng: -74.6, country: '840' },
+  'SI=F': { place: 'COMEX vaults, New York', lat: 41.2, lng: -74.6, country: '840' },
+  'PL=F': { place: 'NYMEX vaults, New York', lat: 41.8, lng: -75.6, country: '840' },
+  'PA=F': { place: 'NYMEX vaults, New York', lat: 41.8, lng: -75.6, country: '840' },
+  'HG=F': { place: 'COMEX warehouses, US', lat: 39.3, lng: -76.6, country: '840' },
+  'ALI=F': { place: 'COMEX aluminum warehouses, US', lat: 42.33, lng: -83.05, country: '840' },
+  'HRC=F': { place: 'US Midwest steel (Gary, Indiana)', lat: 41.6, lng: -87.34, country: '840' },
+  'TIO=F': { place: 'Qingdao, China', lat: 36.07, lng: 120.38, country: '156' },
+  'ZW=F': { place: 'Toledo / Chicago (SRW wheat)', lat: 41.66, lng: -83.56, country: '840' },
+  'KE=F': { place: 'Kansas City (HRW wheat)', lat: 39.1, lng: -94.58, country: '840' },
+  'ZC=F': { place: 'Illinois River (corn, soybeans)', lat: 41.3, lng: -89.1, country: '840' },
+  'ZS=F': { place: 'Illinois River (corn, soybeans)', lat: 41.3, lng: -89.1, country: '840' },
+  'ZM=F': { place: 'Central Illinois processors', lat: 39.84, lng: -88.95, country: '840' },
+  'ZL=F': { place: 'Central Illinois processors', lat: 39.84, lng: -88.95, country: '840' },
+  'ZO=F': { place: 'Minneapolis (oats)', lat: 44.98, lng: -93.27, country: '840' },
+  'ZR=F': { place: 'Arkansas (rough rice)', lat: 34.75, lng: -92.29, country: '840' },
+  'KC=F': { place: 'ICE coffee warehouses, New York', lat: 40.0, lng: -72.5, country: '840' },
+  'CC=F': { place: 'Delaware River ports (cocoa)', lat: 39.95, lng: -75.16, country: '840' },
+  'SB=F': { place: 'Santos, Brazil (FOB raw sugar)', lat: -23.96, lng: -46.33, country: '076' },
+  'CT=F': { place: 'Memphis (cotton)', lat: 35.15, lng: -90.05, country: '840' },
+  'OJ=F': { place: 'Florida (orange juice)', lat: 28.0, lng: -81.7, country: '840' },
+  'LBR=F': { place: 'Pacific Northwest mills (lumber)', lat: 45.5, lng: -122.7, country: '840' },
+  'HE=F': { place: 'Iowa (lean hogs)', lat: 41.9, lng: -93.1, country: '840' },
+  'LE=F': { place: 'Nebraska / Kansas feedlots', lat: 40.6, lng: -99.5, country: '840' },
+  'GF=F': { place: 'Oklahoma City (feeder cattle)', lat: 35.47, lng: -97.5, country: '840' },
+  'DC=F': { place: 'Wisconsin dairy', lat: 44.5, lng: -89.5, country: '840' },
+  'CSC=F': { place: 'Wisconsin dairy', lat: 44.5, lng: -89.5, country: '840' },
 }
 
-/** Use known pricing locations to show the nearest benchmark, or all mapped benchmarks without a clicked location. */
-export function nearestCommodityBenchmarks(contracts: Contract[], location: { lat: number; lng: number } | null): Contract[] {
+type Region = 'americas' | 'europe-africa' | 'gulf-asia'
+/** Trading region of a point: the Americas, Europe/Africa/western Russia, or the Gulf, Asia and Oceania. */
+export function tradingRegion(lat: number, lng: number): Region {
+  if (lng < -25) return 'americas'
+  if (lng >= 45 || (lat > 12 && lat < 37 && lng >= 34)) return 'gulf-asia' // Arabian Peninsula, Levant and Iraq price crude off Dubai
+  return 'europe-africa'
+}
+// Contracts that only price one region. Everything else (metals, grains, softs) is a global exchange reference.
+const PRICES_REGION: Record<string, Region> = {
+  'CL=F': 'americas', 'HO=F': 'americas', 'RB=F': 'americas', 'BZ=F': 'europe-africa', 'DBL=F': 'gulf-asia',
+  'NG=F': 'americas', 'TTF=F': 'europe-africa', 'JKM=F': 'gulf-asia',
+  'HRC=F': 'americas', 'ZR=F': 'americas', 'OJ=F': 'americas', 'LBR=F': 'americas',
+  'HE=F': 'americas', 'LE=F': 'americas', 'GF=F': 'americas', 'DC=F': 'americas', 'CSC=F': 'americas',
+}
+
+/** Benchmarks that price the clicked point's region, plus global exchange references; every mapped
+ *  contract without a location. When no contract covers the region, all are returned. */
+export function regionalCommodityBenchmarks(contracts: Contract[], location: { lat: number; lng: number } | null): Contract[] {
   const mapped = contracts.filter((contract) => SITES[contract.symbol])
   if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return mapped
-  const distance = (contract: Contract) => {
-    const site = SITES[contract.symbol]
-    const radians = (degrees: number) => degrees * Math.PI / 180
-    const lat1 = radians(location.lat)
-    const lat2 = radians(site.lat)
-    const dLat = lat2 - lat1
-    const dLng = radians(site.lng - location.lng)
-    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
-    return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  }
-  const nearest = Math.min(...mapped.map(distance))
-  return mapped.filter((contract) => Math.abs(distance(contract) - nearest) < 1e-9)
+  const region = tradingRegion(location.lat, location.lng)
+  const fits = mapped.filter((c) => (PRICES_REGION[c.symbol] ?? region) === region)
+  return fits.length ? fits : mapped
 }
 
 /** One marker per commodity per pricing location, valued at the average 30-day change there. */
