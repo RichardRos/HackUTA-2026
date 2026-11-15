@@ -128,6 +128,17 @@ def _os_id(client: httpx.Client) -> int:
     raise RuntimeError("Ubuntu 24.04 LTS x64 not in Vultr's OS list")
 
 
+def _log_uploaded(label: str) -> bool:
+    from voyage import storage
+
+    client, bucket = storage._bucket()
+    try:
+        client.head_object(Bucket=bucket, Key=f"voyage/logs/{label}.log")
+        return True
+    except Exception:  # noqa: BLE001 (404 until training finishes)
+        return False
+
+
 def _log(label: str) -> str:
     from voyage import storage
 
@@ -177,18 +188,17 @@ def main(argv: list[str] | None = None) -> int:
                                         "label": label, "user_data": base64.b64encode(script.encode()).decode()})
     r.raise_for_status()
     iid = r.json()["instance"]["id"]
-    print(f"created {label} ({iid}); training, polling every 30 s")
-    ran, deadline = False, time.monotonic() + args.timeout_min * 60
+    print(f"created {label} ({iid}); training, polling the bucket every 30 s")
+    deadline = time.monotonic() + args.timeout_min * 60
     try:
-        while time.monotonic() < deadline:
-            time.sleep(30)
-            inst = client.get(f"/instances/{iid}").json()["instance"]
-            ran = ran or inst["power_status"] == "running"
-            print(f"  {inst['status']} / {inst['power_status']} / {inst['server_status']}", flush=True)
-            if ran and inst["power_status"] == "stopped":  # cloud-init powers off when done
+        # Done = the log is in the bucket (cloud-init uploads it last). Vultr kept reporting powered-off
+        # instances as running, so the power state never said so and finished instances kept billing.
+        while not _log_uploaded(label):
+            if time.monotonic() > deadline:
+                print(f"timed out after {args.timeout_min} min")
                 break
-        else:
-            print(f"timed out after {args.timeout_min} min")
+            time.sleep(30)
+            print(f"  {client.get(f'/instances/{iid}').json()['instance']['server_status']}", flush=True)
         print(_log(label)[-4000:])
     finally:
         if args.keep:
