@@ -375,6 +375,14 @@ GFS runs at 00/06/12/18Z and is ingested by `ingest/update.py --only gfs` (hourl
 
 Live aircraft from [adsb.lol](https://api.adsb.lol) (free, no key, ODbL open data), cached 10 s per point. `radius_nm` 1–250. Not stored in the database. Row fields: `hex`, `callsign`, `registration`, `aircraft_type`, `lat`, `lon`, `altitude_ft` (null on the ground), `on_ground`, `ground_speed_kt`, `track_deg`, `vertical_rate_fpm`, `squawk`, `emergency`, `cargo_operator`, `seen_seconds_ago`. ADS-B has no cargo field: `cargo_operator` is set when the callsign's ICAO airline prefix is a freight airline in `flights.CARGO_OPERATORS` (FedEx, UPS, Atlas, Kalitta, Cargolux, DHL...). Mixed passenger/cargo airlines are never flagged. Upstream failures return a tool error (REST: 502). REST: `GET /api/flights?lat=35.04&lon=-89.98&radius_nm=150&cargo=true`.
 
+### `get_flights_global`
+
+```json
+{"cargo_only": true}
+```
+
+Every tracked aircraft worldwide from the [OpenSky Network](https://opensky-network.org) (`/states/all`), as one shared server-side snapshot: refreshed every 90 s when `OPENSKY_CLIENT_ID`/`OPENSKY_CLIENT_SECRET` are set (free account, 4,000 credits/day, 4 per global call), every 15 min anonymously (400/day). If a refresh fails (e.g. credits used up), the last snapshot is served with `stale_error` set. Response: `{snapshot_time, credits_left, refresh_seconds, authenticated, stale_error, count, aircraft: [...]}`; rows have the `get_flights_near` fields plus `origin_country` (`registration` and `aircraft_type` are null; OpenSky doesn't send them). REST: `GET /api/flights/global?cargo=true`.
+
 ## Market and news tools
 
 ### `search_prediction_markets`

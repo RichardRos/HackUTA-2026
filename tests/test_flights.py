@@ -42,5 +42,55 @@ class FlightTests(unittest.TestCase):
             flights.aircraft_near(1, 1)
 
 
+STATES = {"time": 1763180000, "states": [
+    ["abc123", "UPS2    ", "United States", 1, 1763179995, -85.7, 38.2, 10000.0, False, 230.0, 45.0, -5.0,
+     None, 10100.0, "7700", False, 0],
+    ["def456", "DAL1    ", "United States", 1, 1763179990, -84.4, 33.6, None, True, 0.0, 0.0, None,
+     None, None, None, False, 0],
+    ["nopos1", "AAL2", "United States", None, 1, None, None, None, False, None, None, None, None, None,
+     None, False, 0],
+]}
+
+
+class GlobalTests(unittest.TestCase):
+    def setUp(self):
+        flights._global.update(at=0.0, rows=[], fetched_at=None, credits_left=None)
+
+    def test_state_conversion(self):
+        r = flights.normalize_state(STATES["states"][0])
+        self.assertEqual((r["callsign"], r["cargo_operator"], r["altitude_ft"], r["emergency"]),
+                         ("UPS2", "UPS Airlines", 32808, True))
+        self.assertEqual(r["ground_speed_kt"], 447.1)
+        self.assertEqual(r["vertical_rate_fpm"], -984)
+        ground = flights.normalize_state(STATES["states"][1])
+        self.assertTrue(ground["on_ground"])
+        self.assertIsNone(ground["altitude_ft"])
+        self.assertIsNone(flights.normalize_state(STATES["states"][2]))
+
+    def test_cache_and_stale_fallback(self):
+        calls = []
+
+        def fake_refresh():
+            calls.append(1)
+            if len(calls) > 1:
+                raise RuntimeError("OpenSky daily credits used up")
+            flights._global.update(at=flights.time.monotonic(),
+                                   rows=list(filter(None, map(flights.normalize_state, STATES["states"]))),
+                                   fetched_at=STATES["time"], credits_left=396)
+
+        with patch("flights._refresh_global", side_effect=fake_refresh):
+            snap = flights.aircraft_global()
+            self.assertEqual((snap["count"], snap["credits_left"]), (2, 396))
+            self.assertEqual(flights.aircraft_global(cargo_only=True)["count"], 1)
+            self.assertEqual(len(calls), 1)                      # second call hit the cache
+            flights._global["at"] = 0.0                           # expire it; refresh now fails
+            stale = flights.aircraft_global()
+            self.assertEqual(stale["count"], 2)
+            self.assertIn("credits", stale["stale_error"])
+            flights._global.update(rows=[], at=0.0)
+            with self.assertRaises(RuntimeError):                 # nothing cached to fall back on
+                flights.aircraft_global()
+
+
 if __name__ == "__main__":
     unittest.main()
