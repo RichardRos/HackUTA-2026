@@ -37,6 +37,13 @@ NOAA NWS/CO-OPS, FRED, CFTC, and Shanghai freight indices require no keys. Use `
 
 See [DATABASE.md](DATABASE.md) for schema details, source coverage, optional feeds, and MCP queries.
 
+## Global Nostos + Odyssey routes
+`GET /api/wx/world/point?lat=&lon=`: live conditions, a D+1..D+3 Nostos high and per-model rankings for any point on Earth.
+`POST /api/wx/world/route`: ranks routes (and departure hours) by weather hazard along each route, with a one-line why.
+Same blend as the US model (subtract each model's recent bias, weight by 1/MAE), scored against ERA5 instead of NWS CLI.
+Data: Open-Meteo Previous Runs (ECMWF, GFS, ICON, GEM, JMA) + ERA5 archive. No key; 30-min per-point cache. Logic in `model/world_wx.py`.
+Tests: `pytest model/tests/test_world_wx.py` (HTTP mocked). Request/response examples: [docs/world-wx-api.md](docs/world-wx-api.md).
+
 ## Docker services
 Apply the migrations in [DATABASE.md](DATABASE.md), then:
 ```sh
