@@ -257,6 +257,7 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
     ? `/news/local?lat=${coordinates.lat.toFixed(3)}&lon=${coordinates.lng.toFixed(3)}` : null)
   const benchmarks = regionalCommodityBenchmarks(commodityFutures.data?.contracts ?? [], coordinates)
   const us = country === 'United States of America'
+  const [bondView, setBondView] = useState<'bonds' | 'etfs'>('bonds')
   // Rundown cards mount immediately and show their own loading/error/missing state, so the card set
   // (and the grid) never changes when the fetch lands.
   const fromRundown = <T,>(x: T | Failed | undefined, missing: string, show: (x: T) => ReactNode, failText = '') =>
@@ -410,7 +411,22 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
       )}
       {!commodityMode && (
         <Card title="Government bonds">
-          {fromRundown(r?.bonds, `No government bond data available for ${country}.`, (bonds) => (
+          {/* US Treasury ETFs share this card so every country gets the same six cards in the same places */}
+          {us && (
+            <div className="motion" role="radiogroup" aria-label="Bond view">
+              {(['bonds', 'etfs'] as const).map((v) => (
+                <button key={v} role="radio" aria-checked={bondView === v} className={bondView === v ? 'on' : ''} onClick={() => setBondView(v)}>
+                  {v === 'bonds' ? 'Yields' : 'Treasury ETFs'}
+                </button>
+              ))}
+            </div>
+          )}
+          {us && bondView === 'etfs' ? fromRundown(r?.treasury_etfs, 'No Treasury ETF data returned.', (etfs) => (
+            <>
+              <EtfTrends funds={etfs.funds} />
+              <p className="micro">Source: Alpaca, iShares Treasury ETFs, last month</p>
+            </>
+          )) : fromRundown(r?.bonds, `No government bond data available for ${country}.`, (bonds) => (
             <>
               <ul className="rows">
                 {bonds.map((b) => (
@@ -423,16 +439,6 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
               <p className="micro">{bonds[0]?.name.replace(/\d+ (Year|Month) /, '')} · TradingView</p>
             </>
           ), 'Bond yields unavailable: ')}
-        </Card>
-      )}
-      {!commodityMode && us && (
-        <Card title="Treasury ETFs, last month">
-          {fromRundown(r?.treasury_etfs, 'No Treasury ETF data returned.', (etfs) => (
-            <>
-              <EtfTrends funds={etfs.funds} />
-              <p className="micro">Source: Alpaca, iShares Treasury ETFs</p>
-            </>
-          ))}
         </Card>
       )}
       <Card title="SEC filings">

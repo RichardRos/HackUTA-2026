@@ -671,3 +671,4 @@ html[data-greek="true"] .model-ours td { color: var(--accent); text-shadow: 0 0 
 .md li { margin: 3px 0; }
 .md code { font: 12px var(--mono); background: var(--bg); padding: 1px 4px; border-radius: 2px; }
 .md a { color: var(--accent); }
+.card .motion { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } /* in-card view switch (US bonds: yields / Treasury ETFs) */
