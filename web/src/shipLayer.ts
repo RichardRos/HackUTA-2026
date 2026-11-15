@@ -96,7 +96,7 @@ function shipTexture(): CanvasTexture {
   return tex
 }
 
-/** Ancient longship silhouette with oars and a central sail, bow pointing up. */
+/** Trireme silhouette with oars and a central sail, bow pointing up. */
 function triremeTexture(): CanvasTexture {
   const c = document.createElement('canvas')
   c.width = c.height = 64
@@ -160,6 +160,52 @@ function triremeTexture(): CanvasTexture {
   return tex
 }
 
+/** Longship for tankers in Greek mode: narrow double-ended gold hull, shields along both rails, striped square sail. */
+function longshipTexture(): CanvasTexture {
+  const c = document.createElement('canvas')
+  c.width = c.height = 64
+  const g = c.getContext('2d')!
+  g.translate(32, 32)
+
+  g.beginPath() // hull, pointed at both ends
+  g.moveTo(0, -31)
+  g.quadraticCurveTo(9, -19, 9, -4)
+  g.lineTo(9, 10)
+  g.quadraticCurveTo(9, 23, 0, 31)
+  g.quadraticCurveTo(-9, 23, -9, 10)
+  g.lineTo(-9, -4)
+  g.quadraticCurveTo(-9, -19, 0, -31)
+  g.closePath()
+  g.fillStyle = '#e8c97a'
+  g.fill()
+  g.lineWidth = 2.5
+  g.strokeStyle = '#102f46'
+  g.stroke()
+
+  for (let i = 0, y = -15; y <= 19; y += 5.5, i++) // shields on both rails
+    for (const x of [-8, 8]) {
+      g.beginPath()
+      g.arc(x, y, 2.6, 0, Math.PI * 2)
+      g.fillStyle = (i + (x > 0 ? 1 : 0)) % 2 ? '#c45c3e' : '#eee3d2'
+      g.fill()
+      g.lineWidth = 1
+      g.strokeStyle = '#102f46'
+      g.stroke()
+    }
+
+  for (let i = 0; i < 7; i++) { // square sail on its yard, seen from above
+    g.fillStyle = i % 2 ? '#eee3d2' : '#c45c3e'
+    g.fillRect(-14 + i * 4, -7, 4, 6)
+  }
+  g.lineWidth = 1.5
+  g.strokeStyle = '#102f46'
+  g.strokeRect(-14, -7, 28, 6)
+
+  const tex = new CanvasTexture(c)
+  tex.flipY = false
+  return tex
+}
+
 const vertex = /* glsl */ `
   attribute float angle;
   attribute float category;
@@ -196,7 +242,8 @@ const fragment = /* glsl */ `
   }`
 
 export const SHIP_STYLE: LayerStyle = { texture: shipTexture, iconPx: 18, alt: 0.006, colorByCategory: true } // just above the country caps
-export const TRIREME_STYLE: LayerStyle = { texture: triremeTexture, iconPx: 24, alt: 0.006 } // longships replace only the live ship layer
+export const TRIREME_STYLE: LayerStyle = { texture: triremeTexture, iconPx: 24, alt: 0.006 } // Greek mode: every live ship except tankers
+export const LONGSHIP_STYLE: LayerStyle = { texture: longshipTexture, iconPx: 26, alt: 0.006 } // Greek mode: tankers
 export const PLANE_STYLE: LayerStyle = { texture: () => planeTexture(), iconPx: 14, alt: 0.012 } // above the ships
 export const CARGO_PLANE_STYLE: LayerStyle = { ...PLANE_STYLE, texture: () => planeTexture(true) }
 

@@ -39,11 +39,21 @@ export default function App() {
     <>
       <a className="skip" href="#main">Skip to content</a>
       <header className="nav">
-        <NavLink to="/" className="brand">Nostos</NavLink>
+        <NavLink to="/" className="brand" aria-label="Nostos home">
+          {greekMode
+            ? <><span className="brand-laurel" aria-hidden="true">❧</span><span lang="grc">ΝΟΣΤΟΣ</span><span className="brand-laurel flip" aria-hidden="true">❧</span></>
+            : 'Nostos'}
+        </NavLink>
         <nav aria-label="Main">
-          <NavLink to="/world">World</NavLink>
-          <NavLink to="/search">Search</NavLink>
-          <NavLink to="/model">Model</NavLink>
+          <NavLink to="/world" aria-label="World">
+            {greekMode ? <span className="nav-greek"><span lang="grc">ΚΟΣΜΟΣ</span><small>World</small></span> : 'World'}
+          </NavLink>
+          <NavLink to="/search" aria-label="Search">
+            {greekMode ? <span className="nav-greek"><span lang="grc">ΜΑΝΤΕΙΟΝ</span><small>The oracle</small></span> : 'Search'}
+          </NavLink>
+          <NavLink to="/model" aria-label="Model">
+            {greekMode ? <span className="nav-greek"><span lang="grc">ΠΡΟΓΝΩΣΙΣ</span><small>Model</small></span> : 'Model'}
+          </NavLink>
         </nav>
         <div className="nav-end">
           <button
@@ -80,7 +90,7 @@ export default function App() {
             }
           />
           <Route path="/world" element={<Protected><World greekMode={greekMode} /></Protected>} />
-          <Route path="/search" element={<Protected><Search /></Protected>} />
+          <Route path="/search" element={<Protected><Search greekMode={greekMode} /></Protected>} />
           <Route path="/model" element={<Protected><ModelScores /></Protected>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
