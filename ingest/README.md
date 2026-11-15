@@ -90,16 +90,11 @@ Rough cost for the default 2024-02 → now run:
 A failed chunk is logged and skipped. Re-running the same command fills the gaps, because every write is an upsert.
 
 ## Scheduled job
-`.github/workflows/ingest.yml` runs `update.py` at :17 every hour on GitHub Actions. Add the secrets `TIMESCALE_SERVICE_URL`,
-`EIA_API_KEY`, and (optionally) `NWS_USER_AGENT`. If your service URL omits the password, also add `TIMESCALE_PASSWORD`
-(or `TIMESCALE_SERVICE_PASSWORD`).
-Then use "Run workflow" to test it. Each part runs on its own (`--only`/`--skip`),
+The ingest container (`compose.yaml`, `ingest_service.py`) runs `update.py --skip ships` every hour as the
+`grid_weather` job, and `ships_ais.py` as the `ships` job, with retries and health checks on :8001.
+It reads `.env`: `TIMESCALE_SERVICE_URL`, `EIA_API_KEY` (without it EIA's rate-limited DEMO_KEY is used),
+`NWS_USER_AGENT` (optional) and `AISSTREAM_API_KEY`. Each part runs on its own (`--only`/`--skip`),
 and one failing doesn't stop the others.
-
-To run it from your own machine instead, use cron (`crontab -e`):
-```
-17 * * * * cd /path/to/HackUTA-2026 && .venv/bin/python ingest/update.py >> ingest.log 2>&1
-```
 
 ## Changing points
 Global cities: edit `GLOBAL_CITIES` in `global_points.py`. Both scripts sync them, and GFS picks them up on its next run.

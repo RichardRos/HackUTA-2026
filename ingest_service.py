@@ -59,6 +59,11 @@ JOBS = {
         "interval": 3600,
         "timeout": 900,
     },
+    "grid_weather": {  # EIA-930 demand, NOAA NBM/NWS/GFS weather (ingest/update.py); was a GitHub Action
+        "command": [sys.executable, "ingest/update.py", "--skip", "ships"],
+        "interval": 3600,
+        "timeout": 1800,
+    },
     "ships": {  # AIS snapshot (aisstream.io): one fix per vessel per hour, the voyage model's training rows
         "command": [sys.executable, "ingest/ships_ais.py"],
         "interval": 3600,

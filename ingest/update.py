@@ -19,7 +19,7 @@ Parts (--only / --skip take a comma list):
                 position per vessel (needs AISSTREAM_API_KEY and db/14_ships.sql)
 
 Each part runs independently; exit code 1 if any part failed.
-Scheduled by .github/workflows/ingest.yml (or cron; see ingest/README.md).
+Scheduled hourly by the ingest container (ingest_service.py job grid_weather; see ingest/README.md).
 """
 from __future__ import annotations
 

@@ -375,7 +375,7 @@ One row per world city (`weather_points.purpose = 'global'`) with the next-hour 
 
 Hourly GFS series (same fields) for one `point_id` (a world city like `glb_london`, or a US station, since GFS covers both) or every world city in one `country`. `hours` 1–384, default 72; `limit` default 2000. REST: `GET /api/weather/global/forecast?point_id=glb_london&hours=72`.
 
-GFS runs at 00/06/12/18Z and is ingested by `ingest/update.py --only gfs` (hourly GitHub Action). Points are listed in `ingest/global_points.py`.
+GFS runs at 00/06/12/18Z and is ingested by `ingest/update.py --only gfs` (hourly `grid_weather` job in the ingest container). Points are listed in `ingest/global_points.py`.
 
 ## Nostos weather model (daily highs)
 
