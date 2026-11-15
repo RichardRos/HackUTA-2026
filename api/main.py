@@ -122,6 +122,14 @@ def news(
     return _run(tools.get_news, q=q, tag=tag, hours=hours, limit=limit)
 
 
+@rest.get("/news/local")
+def local_news(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    lon: Annotated[float, Query(ge=-180, le=180)],
+):
+    return _run(tools.get_local_news, lat, lon)
+
+
 _signals_cache: dict[int, tuple[float, list]] = {}
 
 

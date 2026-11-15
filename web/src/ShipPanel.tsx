@@ -138,8 +138,8 @@ export default function ShipPanel({ mmsi, onClose, onTrack }: { mmsi: number; on
         </>
       }
     >
-      {ship && <Card title="Vessel" span={2}>{facts(vessel)}</Card>}
-      {ship && <Card title="Identity" span={2}>{facts(identity)}</Card>}
+      {ship && <Card title="Vessel">{facts(vessel)}</Card>}
+      {ship && <Card title="Identity">{facts(identity)}</Card>}
     </FocusPanel>
   )
 }

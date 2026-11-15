@@ -89,14 +89,14 @@ export default function TidePanel({ station, onClose }: { station: TideStation; 
         </ul>
       }
     >
-      <Card title="Tide curve" span={4}>
+      <Card title="Tide curve">
         {error ? <p className="error" role="alert">{error}</p>
           : !detail ? <p className="muted">Loading tide curve…</p>
             : detail.predicted.length > 1
               ? <TideChart predicted={detail.predicted} observed={detail.observed} events={detail.events} now={now} datum={station.datum} />
               : <p className="muted">NOAA has no predicted curve for this station right now.</p>}
       </Card>
-      <Card title="Station" span={2}>
+      <Card title="Station">
         <dl className="facts">
           <div><dt>Source</dt><dd>{station.source}</dd></div>
           {station.tide_type && <div><dt>Tide type</dt><dd>{station.tide_type}</dd></div>}
@@ -104,7 +104,7 @@ export default function TidePanel({ station, onClose }: { station: TideStation; 
           <div><dt>Position</dt><dd>{station.lat.toFixed(3)}, {station.lon.toFixed(3)}</dd></div>
         </dl>
       </Card>
-      <Card title={station.kind === 'gauge' ? 'Observed vs predicted' : 'Live gauge'} span={2}>
+      <Card title={station.kind === 'gauge' ? 'Observed vs predicted' : 'Live gauge'}>
         {surge != null && lastObs ? (
           <>
             <p className="big">{surge >= 0 ? '+' : ''}{surge.toFixed(2)} m</p>

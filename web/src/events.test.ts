@@ -30,6 +30,7 @@ test('world weather rows become validated, clickable pip events', () => {
 test('global weather country resolution includes Natural Earth aliases and rejects unknown names', () => {
   assert.equal(globalWeatherCountryCode('Dem. Rep. Congo'), 'CD')
   assert.equal(globalWeatherCountryCode('United States of America'), 'US')
+  assert.equal(globalWeatherCountryCode('Chad'), 'TD')
   assert.equal(globalWeatherCountryCode('Atlantis'), null)
   assert.equal(globalWeatherCountryCode('constructor'), null)
 })
