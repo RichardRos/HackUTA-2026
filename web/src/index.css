@@ -239,7 +239,7 @@ main { height: calc(100% - 72px); }
 
 /* assistant */
 /* Voyage planner: right column under the view controls; a bottom sheet on phones. */
-.voyage { position: absolute; z-index: 3; right: var(--gutter); top: 150px; bottom: 20px; width: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); padding: 16px; display: grid; align-content: start; grid-auto-rows: max-content; gap: 12px; }
+.voyage { position: absolute; z-index: 3; right: var(--gutter); top: 204px; /* below .view-controls */ bottom: 20px; width: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); padding: 16px; display: grid; align-content: start; grid-auto-rows: max-content; gap: 12px; }
 .voyage .kicker { margin: 0; }
 .voyage-modes { display: grid; grid-template-columns: repeat(3, 1fr); }
 .voyage-fields { display: grid; gap: 8px; }

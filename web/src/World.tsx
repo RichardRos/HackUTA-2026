@@ -99,10 +99,11 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     setPicked((p) => ({ ...p, [picking ?? 'start']: { lat, lon } }))
     setPicking((which) => (which === 'start' && !picked.end ? 'end' : null)) // start, then straight on to end
   }, [picking, picked.end])
+  const routing = view === 'voyage' && voyage !== null // a planned route on screen: markers would hide it
   const voyageTrack = useMemo(() => (voyage ? flatten(voyage) : []), [voyage])
   const routeLines = useMemo<RouteLine[]>(() => voyage ? voyage.legs.flatMap((leg) => [
     { points: leg.shortest_path, color: 'rgba(174,186,190,0.55)', dashed: true, stroke: 1 },
-    { points: leg.path, color: leg.path.map((p) => hsColor(p.hs)), stroke: 2.4, flow: true },
+    { points: leg.path, color: leg.path.map((p) => hsColor(p.hs)), stroke: 3.4, flow: true },
   ]) : [], [voyage])
   const routeStops = useMemo(() => {
     if (view !== 'voyage') return []
@@ -460,12 +461,12 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       <LayerMenu layers={shownLayers} />
 
       <Suspense fallback={null}>
-        <Earth events={markers} selected={selected} onSelect={selectEvent} onCountry={greekMode ? undefined : pickCountry} ships={ships} onShip={pickShip}
-          planes={planesOn ? planes : undefined} onPlane={pickPlane} track={mmsi ? track : undefined} focusAt={focused ? focusAt : null} greekMode={greekMode}
+        <Earth events={routing ? undefined : markers} selected={selected} onSelect={selectEvent} onCountry={greekMode ? undefined : pickCountry}
+          ships={routing ? undefined : ships} onShip={pickShip} planes={planesOn && !routing ? planes : undefined} onPlane={pickPlane} track={mmsi ? track : undefined} focusAt={focused ? focusAt : null} greekMode={greekMode}
           weather={overlay === 'off' ? null : weatherGrid} marine={marineGrid}
           temperature={overlay === 'weather'}
           windAndSurf={overlay === 'wind' && marineStatus === 'ready'}
-          tides={showTides ? tides : NO_TIDES} onTide={pickTide}
+          tides={showTides && !routing ? tides : NO_TIDES} onTide={pickTide}
           showMonsters={showMonsters} showVoyage={showVoyage && activeView !== 'voyage'} onLore={openLore}
           lore={greekMode && !focused && activeView !== 'voyage' ? lore : null}
           routes={activeView === 'voyage' ? routeLines : undefined} stops={routeStops} vessel={vesselAt}
