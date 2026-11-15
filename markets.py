@@ -6,6 +6,7 @@ import math
 import os
 import re
 import sys
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -161,15 +162,22 @@ def _http_json(url: str, params: dict | None = None, method: str = "GET",
     request_headers.update(headers or {})
     request = urllib.request.Request(url, data=data, headers=request_headers, method=method)
     host = urllib.parse.urlparse(url).netloc
-    try:
-        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
-            body = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"HTTP {exc.code} from {host}") from None
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"HTTP request to {host} failed: {exc.reason}") from None
-    except TimeoutError:
-        raise RuntimeError(f"HTTP request to {host} timed out") from None
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+                body = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            # Kalshi rate-limits the scraper's burst of per-series requests; waiting a moment clears it.
+            if exc.code == 429 and attempt < 3:
+                wait = exc.headers.get("Retry-After", "")
+                time.sleep(min(10.0, float(wait)) if wait.replace(".", "", 1).isdigit() else 2.0 * 2 ** attempt)
+                continue
+            raise RuntimeError(f"HTTP {exc.code} from {host}") from None
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"HTTP request to {host} failed: {exc.reason}") from None
+        except TimeoutError:
+            raise RuntimeError(f"HTTP request to {host} timed out") from None
     try:
         return json.loads(body)
     except json.JSONDecodeError:

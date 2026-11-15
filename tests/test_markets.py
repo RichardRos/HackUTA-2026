@@ -252,3 +252,26 @@ class KalshiCommodityIngestTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RateLimitRetryTest(unittest.TestCase):
+    def test_429_is_retried_with_backoff_then_gives_up(self):
+        import io
+        import urllib.error
+        from unittest.mock import MagicMock, patch
+
+        import markets
+
+        def limited():
+            return urllib.error.HTTPError("https://api.example/x", 429, "Too Many", {"Retry-After": "1"}, None)
+
+        ok = MagicMock()
+        ok.__enter__.return_value = io.BytesIO(b'{"ok": true}')
+        with patch.object(markets.time, "sleep") as sleep, \
+                patch.object(markets.urllib.request, "urlopen", side_effect=[limited(), limited(), ok]):
+            self.assertEqual(markets._http_json("https://api.example/x"), {"ok": True})
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [1.0, 1.0])
+        with patch.object(markets.time, "sleep"), \
+                patch.object(markets.urllib.request, "urlopen", side_effect=[limited() for _ in range(4)]):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 429"):
+                markets._http_json("https://api.example/x")
