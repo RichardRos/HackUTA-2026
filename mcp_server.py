@@ -1019,6 +1019,55 @@ def get_marine_grid() -> dict:
     return world_data.marine_grid()
 
 
+VoyageMode = Literal["points", "ports", "odyssey"]
+VesselId = Literal["container", "tanker", "bulk", "ferry", "trireme"]
+PortId = Annotated[str, Field(pattern=r"^[a-z]{5}$")]
+
+
+@mcp.tool(annotations=ReadOnly)
+def get_voyage_options() -> dict:
+    """What plan_voyage accepts: port ids and names, vessel profiles (service speed, wave limit) and
+    the stops of Odysseus's voyage, plus the speed model currently loaded (if any)."""
+    from voyage import model, ports, storage
+
+    loaded = storage._state.get("model")
+    return {"ports": list(ports.PORTS_BY_ID.values()), "odyssey": ports.ODYSSEY_STOPS,
+            "vessels": [{"id": v.id, "label": v.label, "service_kn": v.service_kn, "hs_limit_m": v.hs_limit_m}
+                        for v in model.VESSELS.values()],
+            "model": loaded.meta if loaded else None}
+
+
+@mcp.tool(annotations=ExternalReadOnly)
+def plan_voyage(
+    mode: VoyageMode,
+    vessel: VesselId = "container",
+    start_lat: Annotated[float, Field(ge=-90, le=90)] | None = None,
+    start_lon: Annotated[float, Field(ge=-180, le=180)] | None = None,
+    end_lat: Annotated[float, Field(ge=-90, le=90)] | None = None,
+    end_lon: Annotated[float, Field(ge=-180, le=180)] | None = None,
+    start_port: PortId | None = None,
+    end_port: PortId | None = None,
+    depart: Annotated[str, Field(max_length=40)] | None = None,
+    speed_kn: Annotated[float, Field(ge=2, le=30)] | None = None,
+    include_path: bool = False,
+) -> dict:
+    """Weather-optimal sea route. mode 'points' (start/end coordinates), 'ports' (ids from
+    get_voyage_options) or 'odyssey' (Troy to Ithaca through the episodes of the Odyssey). Each step
+    is costed by a SuperLearner speed model using the waves, wind and currents forecast for the hour
+    the ship reaches it. Returns ETA with a 90% band, distance, time saved against the shortest path,
+    worst seas and canals used. depart: ISO time within the next 7 days (default now)."""
+    from voyage import router
+
+    start = (start_lat, start_lon) if start_lat is not None and start_lon is not None else None
+    end = (end_lat, end_lon) if end_lat is not None and end_lon is not None else None
+    result = router.plan(mode=mode, vessel_id=vessel, start=start, end=end, start_port=start_port,
+                         end_port=end_port, depart=depart, speed_kn=speed_kn)
+    if include_path:
+        return result
+    return {**result, "legs": [{k: v for k, v in leg.items() if k not in ("path", "shortest_path", "debug")}
+                               for leg in result["legs"]]}
+
+
 @mcp.tool(annotations=ExternalReadOnly)
 def get_tides() -> dict:
     """Tide stations worldwide with predicted highs and lows (UTC, metres; each station's `datum`

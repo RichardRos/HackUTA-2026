@@ -6,3 +6,11 @@ uvicorn>=0.35
 psycopg-pool>=3.2
 httpx>=0.27
 websockets>=13,<18
+# voyage routing (voyage/): SuperLearner speed model, land mask, Vultr Object Storage (S3 API)
+numpy>=1.26,<3
+scikit-learn>=1.5,<2
+xgboost-cpu>=2.1,<4
+joblib>=1.4
+global-land-mask>=1.0,<2
+boto3>=1.34,<2
+psycopg[binary]>=3.2,<4

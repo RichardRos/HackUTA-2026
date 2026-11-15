@@ -242,6 +242,51 @@ main { height: calc(100% - 72px); }
 .down { color: var(--rising); }
 
 /* assistant */
+/* Voyage planner: right column under the view controls; a bottom sheet on phones. */
+.voyage { position: absolute; z-index: 3; right: var(--gutter); top: 150px; bottom: 20px; width: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); padding: 16px; display: grid; align-content: start; grid-auto-rows: max-content; gap: 12px; }
+.voyage .kicker { margin: 0; }
+.voyage-modes { display: grid; grid-template-columns: repeat(3, 1fr); }
+.voyage-fields { display: grid; gap: 8px; }
+.voyage-fields.two { grid-template-columns: 1fr 1fr; }
+.voyage-fields .wide { grid-column: 1 / -1; }
+.voyage-fields label { display: grid; gap: 4px; font: 400 11px var(--mono); text-transform: uppercase; color: var(--muted); letter-spacing: .03em; }
+.voyage-fields select, .voyage-fields input { width: 100%; min-height: 38px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: 400 13px var(--sans); text-transform: none; letter-spacing: 0; color-scheme: dark; }
+.voyage-pick { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.voyage-pick .micro { display: inline; margin: 0; }
+.chip { min-height: 32px; padding: 0 12px; background: none; border: 1px solid var(--line); color: var(--muted); font: 500 11px var(--mono); border-radius: 2px; cursor: pointer; }
+.chip:hover, .chip.on { color: var(--text); border-color: #ffc77a; }
+.voyage-actions { display: flex; gap: 8px; align-items: center; }
+.voyage-actions .button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.voyage-stops, .voyage-legs { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; max-height: 220px; overflow-y: auto; counter-reset: stop; }
+.voyage-stops li { padding: 4px 0 4px 26px; position: relative; font-size: 13px; counter-increment: stop; }
+.voyage-stops li::before { content: counter(stop); position: absolute; left: 0; top: 5px; width: 18px; font: 500 10px var(--mono); color: var(--accent); text-align: right; }
+.voyage-stops .micro, .voyage-legs .micro { display: block; margin: 0; text-transform: none; letter-spacing: 0; font-family: var(--sans); }
+.voyage-legs button { width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); padding: 6px 0; cursor: pointer; font: 400 13px var(--sans); }
+.voyage-legs button:hover b { color: #ffc77a; }
+.voyage-result { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.voyage-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.voyage-stats div { border: 1px solid var(--line); padding: 8px 10px; display: grid; gap: 2px; min-width: 0; }
+.voyage-stats dt { font: 400 10px var(--mono); text-transform: uppercase; color: var(--muted); letter-spacing: .03em; }
+.voyage-stats dd { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.voyage-stats .micro { margin: 0; text-transform: none; letter-spacing: 0; font-family: var(--sans); }
+.voyage-scrub { display: flex; gap: 8px; align-items: center; }
+.voyage-scrub input { flex: 1; accent-color: #ffc77a; min-height: 32px; }
+.voyage-here { margin: 0; text-transform: none; letter-spacing: 0; }
+.voyage-strip { display: grid; gap: 2px; }
+.voyage-strip .section-title { margin: 0; }
+.voyage-strip .micro { margin: 0; text-transform: none; letter-spacing: 0; min-height: 14px; }
+.voyage-legend { display: grid; gap: 4px; }
+.voyage-legend .micro { margin: 0; }
+.voyage-ramp { height: 6px; border-radius: 3px; background: linear-gradient(to right, rgb(61,189,201), rgb(230,244,246), rgb(255,155,89)); }
+.voyage-ramp-labels { display: flex; justify-content: space-between; }
+.voyage-dash { display: inline-block; width: 18px; border-top: 1px dashed rgba(174,186,190,.8); vertical-align: middle; margin-right: 4px; }
+.voyage-model summary { cursor: pointer; font: 400 11px var(--mono); color: var(--muted); text-transform: uppercase; min-height: 24px; }
+.voyage-model p { font-size: 12px; line-height: 1.5; color: var(--muted); margin: 6px 0 0; }
+.earth.picking { cursor: crosshair; }
+@media (max-width: 720px) {
+  .voyage { left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; max-height: 55%; }
+}
+
 .assistant-open { position: absolute; z-index: 3; left: var(--gutter); bottom: 32px; }
 .assistant { position: absolute; z-index: 3; left: var(--gutter); bottom: 24px; width: 400px; max-height: min(620px, calc(100% - 48px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); padding: 20px 20px 8px; }
 .world.focused .assistant-open, .world.focused .assistant { left: auto; right: 20px; bottom: 20px; z-index: 4; } /* chat about the open panel, over its cards */

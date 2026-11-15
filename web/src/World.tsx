@@ -13,6 +13,9 @@ import type { PlaneDot, ShipDot, TrackPoint } from './Earth'
 import PlanePanel from './PlanePanel'
 import ShipPanel from './ShipPanel'
 import TidePanel from './TidePanel'
+import VoyagePanel, { type Picking } from './VoyagePanel'
+import { at as positionAt, flatten, hsColor, type Voyage } from './voyage'
+import type { RouteLine } from './Earth'
 import type { TideOverview, TideStation } from './tideLayer'
 import { COMMODITIES, toCommodityEvents, toEvent, toWeatherEvent, type Commodity, type Contract, type GlobalWeather, type RegionSignal, type SignalEvent } from './events'
 import type { MarineGrid, WeatherGrid } from './weatherLayer'
@@ -77,7 +80,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   const [planeNote, setPlaneNote] = useState<string | null>(null)
   const [commodityEvents, setCommodityEvents] = useState<SignalEvent[]>([])
   const [commodityError, setCommodityError] = useState<string | null>(null)
-  const [view, setView] = useState<'world' | 'commodities'>('world')
+  const [view, setView] = useState<'world' | 'commodities' | 'voyage'>('world')
   const [activeCommodity, setActiveCommodity] = useState<Commodity>('oil')
   const [weatherGrid, setWeatherGrid] = useState<WeatherGrid | null>(null)
   const [weatherGridStatus, setWeatherGridStatus] = useState<'loading' | 'ready' | string>('loading')
@@ -88,6 +91,29 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   const [tides, setTides] = useState<TideStation[]>([])
   const [tideStatus, setTideStatus] = useState<'idle' | 'loading' | 'ready' | string>('idle')
   const [tideId, setTideId] = useState<string | null>(null)
+  const [voyage, setVoyage] = useState<Voyage | null>(null)
+  const [voyageHour, setVoyageHour] = useState(0)
+  const [picking, setPicking] = useState<Picking>(null)
+  const [picked, setPicked] = useState<{ start: { lat: number; lon: number } | null; end: { lat: number; lon: number } | null }>({ start: null, end: null })
+  const onPick = useCallback((lat: number, lon: number) => {
+    setPicked((p) => ({ ...p, [picking ?? 'start']: { lat, lon } }))
+    setPicking((which) => (which === 'start' && !picked.end ? 'end' : null)) // start, then straight on to end
+  }, [picking, picked.end])
+  const voyageTrack = useMemo(() => (voyage ? flatten(voyage) : []), [voyage])
+  const routeLines = useMemo<RouteLine[]>(() => voyage ? voyage.legs.flatMap((leg) => [
+    { points: leg.shortest_path, color: 'rgba(174,186,190,0.55)', dashed: true, stroke: 1 },
+    { points: leg.path, color: leg.path.map((p) => hsColor(p.hs)), stroke: 2.4, flow: true },
+  ]) : [], [voyage])
+  const routeStops = useMemo(() => {
+    if (view !== 'voyage') return []
+    if (voyage) return voyage.stops.map((p) => ({ lat: p.lat, lon: p.lon, name: p.name }))
+    return [picked.start && { ...picked.start, name: 'Start' }, picked.end && { ...picked.end, name: 'End' }]
+      .filter((p): p is { lat: number; lon: number; name: string } => !!p)
+  }, [view, voyage, picked])
+  const vesselAt = useMemo(() => {
+    const p = view === 'voyage' ? positionAt(voyageTrack, voyageHour) : null
+    return p ? { lat: p.lat, lon: p.lon } : null
+  }, [view, voyageTrack, voyageHour])
 
   // Greek mode is strictly seafaring: ships, tides, wind and waves. Flights, oil and the other commodities,
   // grid signals, city weather and country briefings are hidden. The user's own switches are kept for
@@ -96,7 +122,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   const cityWeatherOn = showWeather && !greekMode
   const planesOn = showPlanes && !greekMode
   const commoditiesOn = showCommodities && !greekMode
-  const activeView = greekMode ? 'world' : view
+  const activeView = greekMode && view === 'commodities' ? 'world' : view // Greek mode: the sea and the voyage, no markets
   const overlay = greekMode && weatherLayer === 'weather' ? 'wind' : weatherLayer
   useEffect(() => {
     if (!greekMode) return
@@ -381,28 +407,28 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       {greekMode && <GreekSky />}
       <div className="world-intro">
         {greekMode && <p className="greek-overline" lang="grc">ΘΑΛΑΣΣΑ · ΟΙΝΟΨ ΠΟΝΤΟΣ</p>}
-        <p className="kicker">{greekMode ? 'Seafaring view' : activeView === 'world' ? 'Global editorial view' : 'Commodity monitoring'}</p>
-        <h1>{greekMode ? 'The wine-dark sea' : activeView === 'world' ? 'World view' : 'Commodities'}</h1>
+        <p className="kicker">{activeView === 'voyage' ? 'Weather routing' : greekMode ? 'Seafaring view' : activeView === 'world' ? 'Global editorial view' : 'Commodity monitoring'}</p>
+        <h1>{activeView === 'voyage' ? (greekMode ? 'Nostos' : 'Voyage') : greekMode ? 'The wine-dark sea' : activeView === 'world' ? 'World view' : 'Commodities'}</h1>
         <p className="muted">
-          {greekMode
-            ? 'Ships sail as triremes, tankers as longships. Clay monsters come from the Odyssey, royal blue ones from other myths. Click any for its legend.'
-            : activeView === 'world'
-              ? 'Click any country for its briefing, news, filings and markets.'
-              : 'Click a country for commodity markets, funds and nearby benchmark prices.'}
+          {activeView === 'voyage'
+            ? 'The fastest safe sea route, costed with the forecast for when the ship gets to each point.'
+            : greekMode
+              ? 'Ships sail as triremes, tankers as longships. Clay monsters come from the Odyssey, royal blue ones from other myths. Click any for its legend.'
+              : activeView === 'world'
+                ? 'Click any country for its briefing, news, filings and markets.'
+                : 'Click a country for commodity markets, funds and nearby benchmark prices.'}
         </p>
       </div>
 
       <div className="view-controls" aria-label={greekMode ? 'Sea conditions' : 'Globe views and weather'}>
-        {!greekMode && (
-          <div className="view-switch" role="group" aria-label="Globe view">
-            {(['world', 'commodities'] as const).map((next) => (
-              <button key={next} type="button" aria-pressed={view === next}
-                className={view === next ? 'on' : ''} onClick={() => setView(next)}>
-                {next === 'world' ? 'World' : 'Commodities'}
-              </button>
-            ))}
-          </div>
-        )}
+        <div className="view-switch" role="group" aria-label="Globe view">
+          {(greekMode ? ['world', 'voyage'] as const : ['world', 'commodities', 'voyage'] as const).map((next) => (
+            <button key={next} type="button" aria-pressed={activeView === next}
+              className={activeView === next ? 'on' : ''} onClick={() => setView(next)}>
+              {next === 'world' ? (greekMode ? 'The sea' : 'World') : next === 'commodities' ? 'Commodities' : greekMode ? 'Nostos' : 'Voyage'}
+            </button>
+          ))}
+        </div>
         {activeView === 'commodities' && (
           <label className="commodity-select">
             <span className="sr-only">Active commodity</span>
@@ -440,16 +466,19 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
           temperature={overlay === 'weather'}
           windAndSurf={overlay === 'wind' && marineStatus === 'ready'}
           tides={showTides ? tides : NO_TIDES} onTide={pickTide}
-          showMonsters={showMonsters} showVoyage={showVoyage} onLore={openLore} lore={greekMode && !focused ? lore : null} />
+          showMonsters={showMonsters} showVoyage={showVoyage && activeView !== 'voyage'} onLore={openLore}
+          lore={greekMode && !focused && activeView !== 'voyage' ? lore : null}
+          routes={activeView === 'voyage' ? routeLines : undefined} stops={routeStops} vessel={vesselAt}
+          onPick={activeView === 'voyage' && picking ? onPick : undefined} />
       </Suspense>
 
-      {greekMode && lore && !focused && <GreekLore entry={lore} onPick={openLore} onClose={() => setLore(null)} />}
+      {greekMode && lore && !focused && activeView !== 'voyage' && <GreekLore entry={lore} onPick={openLore} onClose={() => setLore(null)} />}
 
       {mmsi && <ShipPanel key={mmsi} mmsi={mmsi} onTrack={setTrack} onClose={clearFocus} />}
       {tideStation && <TidePanel key={tideStation.id} station={tideStation} onClose={clearFocus} />}
       {planeHex && <PlanePanel key={planeHex} hex={planeHex} aircraft={aircraft.find((a) => a.hex === planeHex) ?? null} onClose={clearFocus} />}
 
-      {country && <CountryPanel key={country} country={country} onClose={clearFocus} mode={activeView}
+      {country && <CountryPanel key={country} country={country} onClose={clearFocus} mode={activeView === 'commodities' ? 'commodities' : 'world'}
         commodity={activeCommodity} coordinates={activeView === 'commodities' ? focusAt : localAt} />}
 
       {selected?.commodity && <CommodityPanel key={selected.commodity} commodity={selected.commodity} onClose={clearFocus} />}
@@ -479,7 +508,12 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
         </FocusPanel>
       )}
 
-      {!(greekMode && lore && !focused) && (
+      {activeView === 'voyage' && !focused && (
+        <VoyagePanel greekMode={greekMode} picked={picked} picking={picking} onPicking={setPicking}
+          onResult={setVoyage} hour={voyageHour} onHour={setVoyageHour} />
+      )}
+
+      {activeView !== 'voyage' && !(greekMode && lore && !focused) && (
         <Assistant key={`chat:${onScreen?.topic ?? ''}`} topic={onScreen?.topic} context={onScreen?.context.slice(0, 2000)} greekMode={greekMode} />
       )}
     </div>

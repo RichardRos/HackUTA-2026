@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Path, Qu
 from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastmcp.server.auth.providers.jwt import JWTVerifier  # noqa: E402
+from pydantic import BaseModel, ConfigDict, Field  # noqa: E402
 
 import mcp_server as tools  # noqa: E402
 import ships  # noqa: E402
@@ -295,6 +296,40 @@ def weather_grid():
 @rest.get("/weather/marine")
 def marine_grid():
     return _run(tools.get_marine_grid)
+
+
+class LatLon(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
+class VoyageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: tools.VoyageMode
+    vessel: tools.VesselId = "container"
+    start: LatLon | None = None
+    end: LatLon | None = None
+    start_port: tools.PortId | None = None
+    end_port: tools.PortId | None = None
+    depart: str | None = Field(default=None, max_length=40)
+    speed_kn: float | None = Field(default=None, ge=2, le=30)
+    dwell_h: float = Field(default=24, ge=0, le=240)
+
+
+@rest.get("/voyage/options")
+def voyage_options():
+    return _run(tools.get_voyage_options)
+
+
+@rest.post("/voyage/route")
+def voyage_route(body: VoyageRequest):
+    from voyage import router  # numpy, scikit-learn: load on first use, not at API start
+
+    return _run(router.plan, mode=body.mode, vessel_id=body.vessel,
+                start=(body.start.lat, body.start.lon) if body.start else None,
+                end=(body.end.lat, body.end.lon) if body.end else None,
+                start_port=body.start_port, end_port=body.end_port, depart=body.depart,
+                speed_kn=body.speed_kn, dwell_h=body.dwell_h)
 
 
 @rest.get("/tides")
