@@ -347,6 +347,34 @@ Required: `ba_code`, `source` (`era5` or `om_analysis`), `start`, `end`. Optiona
 
 Row fields: `ba_code`, `source`, `valid_time`, `temp_f`, `dewpoint_f`, `cdh_65`, `hdh_65`, `points_used`. Values are load-weighted across available load-purpose points. Degree-hours use a 65°F base.
 
+### `get_global_weather_now`
+
+```json
+{"country": "JP"}
+```
+
+One row per world city (`weather_points.purpose = 'global'`, ~100 metros outside the US) with the next-hour NOAA GFS 0.25° forecast. `country` (ISO 3166-1 alpha-2) is optional; `as_of` gives the forecast that was public at that instant. Row fields: `point_id`, `name`, `country`, `latitude`, `longitude`, `valid_time`, `issued_at`, `temp_f`, `apparent_temp_f`, `dewpoint_f`, `rh_pct`, `cloud_cover_pct`, `wind_10m_mph`, `wind_gust_mph`, `wind_dir_deg`, `precip_in`, `snow_in`, `shortwave_wm2`. REST: `GET /api/weather/global?country=JP`.
+
+### `get_global_weather_forecast`
+
+```json
+{"point_id": "glb_london", "hours": 72}
+```
+
+Hourly GFS series (same fields) for one `point_id` (a world city like `glb_london`, or a US station, since GFS covers both) or every world city in one `country`. `hours` 1–384, default 72; `limit` default 2000. REST: `GET /api/weather/global/forecast?point_id=glb_london&hours=72`.
+
+GFS runs at 00/06/12/18Z and is ingested by `ingest/update.py --only gfs` (hourly GitHub Action). Points are listed in `ingest/global_points.py`.
+
+## Flight tracker
+
+### `get_flights_near`
+
+```json
+{"lat": 35.04, "lon": -89.98, "radius_nm": 150, "cargo_only": true}
+```
+
+Live aircraft from [adsb.lol](https://api.adsb.lol) (free, no key, ODbL open data), cached 10 s per point. `radius_nm` 1–250. Not stored in the database. Row fields: `hex`, `callsign`, `registration`, `aircraft_type`, `lat`, `lon`, `altitude_ft` (null on the ground), `on_ground`, `ground_speed_kt`, `track_deg`, `vertical_rate_fpm`, `squawk`, `emergency`, `cargo_operator`, `seen_seconds_ago`. ADS-B has no cargo field: `cargo_operator` is set when the callsign's ICAO airline prefix is a freight airline in `flights.CARGO_OPERATORS` (FedEx, UPS, Atlas, Kalitta, Cargolux, DHL...). Mixed passenger/cargo airlines are never flagged. Upstream failures return a tool error (REST: 502). REST: `GET /api/flights?lat=35.04&lon=-89.98&radius_nm=150&cargo=true`.
+
 ## Market and news tools
 
 ### `search_prediction_markets`

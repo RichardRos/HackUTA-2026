@@ -46,7 +46,7 @@ docker compose ps
 - FastAPI + MCP: `http://127.0.0.1:8000/docs`, `/mcp`, `/health`
 - Refresh monitor: `http://127.0.0.1:8001/health`, `/jobs`, `/runs`, `/checks`, `/dead-letters`
 
-Local equivalents: `uvicorn api.main:app` and `python ingest_service.py start`. The refresh service schedules all feeds, retries failures into a dead-letter queue, and records freshness/data-quality checks. See [DATABASE.md](DATABASE.md) for operations and replay commands and [docs/API.md](docs/API.md) for all 16 read-only MCP tools.
+Local equivalents: `uvicorn api.main:app` and `python ingest_service.py start`. The refresh service schedules all feeds, retries failures into a dead-letter queue, and records freshness/data-quality checks. See [DATABASE.md](DATABASE.md) for operations and replay commands and [docs/API.md](docs/API.md) for every MCP tool.
 
 Internal Gemini-generated TimescaleDB search is separate from MCP; see [docs/SEARCH_SERVICE.md](docs/SEARCH_SERVICE.md).
 
