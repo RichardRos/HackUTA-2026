@@ -182,9 +182,9 @@ def main() -> None:
         sys.exit(f"unknown part(s): {bad}")
 
     c.load_env()
-    if "subba" in parts and not os.getenv("EIA_API_KEY"):
-        parts.remove("subba")  # its ~30 pages trip DEMO_KEY's rate limit every run and failed the whole job
-        c.log("subba skipped: set EIA_API_KEY (free, eia.gov/opendata/register.php)")
+    if not os.getenv("EIA_API_KEY") and {"eia", "subba"} & set(parts):
+        parts = [p for p in parts if p not in ("eia", "subba")]  # DEMO_KEY's hourly limit failed every run
+        c.log("eia, subba skipped: set EIA_API_KEY (free, eia.gov/opendata/register.php)")
     now = c.utcnow()
     failed = False
     with c.connect() as conn:
