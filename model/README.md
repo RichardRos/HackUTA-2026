@@ -99,6 +99,4 @@ Created by `sql/nostos_wx_schema.sql`. It's additive only: nothing outside `nost
   (`KXHIGHTSDF`, titled "SATX") points at Louisville's station, which looks like a Kalshi labelling quirk.
 - Truth is IEM's latest version of each CLI report; 42 of 13,620 city-days have no report.
 
-## AI use
 
-Built with Claude Code as an AI coding assistant, approved by HackUTA organizers.
