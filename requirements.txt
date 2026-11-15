@@ -1,3 +1,8 @@
-psycopg[binary]>=3.1
+psycopg[binary]>=3.2
+psycopg-pool>=3.2    # api/ (website assistant)
 python-dotenv>=1.0
 pyarrow>=14          # NCEI GHCNh Parquet files (backfill only)
+fastapi>=0.115       # api/
+uvicorn>=0.30        # api/
+httpx>=0.27          # api/ (Grok Bot webhook)
+pytest>=8            # tests only
