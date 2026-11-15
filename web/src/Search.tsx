@@ -26,6 +26,8 @@ const TOPICS = ['oil', 'natural-gas', 'metals', 'agriculture', 'power-grid', 're
   'shipping', 'rates', 'inflation', 'stocks', 'crypto', 'geopolitics', 'texas']
 const FILTERS = ['sources', 'news_source', 'market_platform', 'tag', 'from', 'to'] as const
 const SUGGESTIONS = ['oil supply', 'Texas power', 'shipping disruptions']
+// Greek mode keeps to the sea: no oil, no power grid.
+const SEA_SUGGESTIONS = ['shipping disruptions', 'port congestion', 'Suez Canal transits']
 
 /** API query string from the page's URL params; dates become a full UTC-day window. */
 function searchQuery(params: URLSearchParams) {
@@ -46,7 +48,7 @@ function searchQuery(params: URLSearchParams) {
 const rows = <T,>(r: Result<T>) => (Array.isArray(r) ? r : [])
 const failed = (r: Result<unknown>) => (r && !Array.isArray(r) ? r.error : null)
 
-export default function Search() {
+export default function Search({ greekMode = false }: { greekMode?: boolean }) {
   const api = useApi()
   const [params, setParams] = useSearchParams()
   const q = params.get('q') ?? ''
@@ -109,11 +111,13 @@ export default function Search() {
     <div className="search">
       <div className="search-inner">
         <header className="search-header">
-          <h1>Market and news search</h1>
+          {greekMode && <p className="greek-overline" lang="grc">ΜΑΝΤΕΙΟΝ · ΔΕΛΦΟΙ</p>}
+          <h1>{greekMode ? 'Consult the oracle' : 'Market and news search'}</h1>
+          {greekMode && <p className="oracle-motto"><span lang="grc">γνῶθι σεαυτόν</span> · “know thyself”, carved over the temple door at Delphi</p>}
         </header>
 
         <form className="search-form" onSubmit={submit} role="search">
-          <label htmlFor="q">Search markets and news</label>
+          <label htmlFor="q">{greekMode ? 'Ask the Pythia about shipping and the sea' : 'Search markets and news'}</label>
           <div className="search-form-row">
             <input
               id="q"
@@ -124,13 +128,13 @@ export default function Search() {
               maxLength={500}
               autoComplete="off"
             />
-            <button type="submit" className="search-submit">Find results</button>
+            <button type="submit" className="search-submit">{greekMode ? 'Ask the oracle' : 'Find results'}</button>
           </div>
         </form>
 
         <div className="search-suggestions" role="group" aria-label="Suggested searches">
           <span>Try:</span>
-          {SUGGESTIONS.map((suggestion) => (
+          {(greekMode ? SEA_SUGGESTIONS : SUGGESTIONS).map((suggestion) => (
             <button key={suggestion} type="button" onClick={() => chooseSuggestion(suggestion)}>{suggestion}</button>
           ))}
         </div>
