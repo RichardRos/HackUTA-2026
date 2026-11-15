@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch
 
@@ -126,3 +127,19 @@ class StoredTest(unittest.TestCase):
             stations()
             clock[0] = 5
             self.assertEqual(stations(), {"8443970": {"station": "Boston"}})  # no "stale" key polluting the mapping
+
+
+class OpenMeteoKeyTest(unittest.TestCase):
+    def test_key_switches_to_customer_endpoint_and_leaves_other_hosts_alone(self):
+        from unittest.mock import patch
+
+        import world_data
+
+        with patch.dict(os.environ, {"OPEN_METEO_API_KEY": ""}):
+            self.assertEqual(world_data.open_meteo("https://api.open-meteo.com/v1/forecast", {"a": 1}),
+                             ("https://api.open-meteo.com/v1/forecast", {"a": 1}))
+        with patch.dict(os.environ, {"OPEN_METEO_API_KEY": "k"}):
+            self.assertEqual(world_data.open_meteo("https://marine-api.open-meteo.com/v1/marine", {"a": 1}),
+                             ("https://customer-marine-api.open-meteo.com/v1/marine", {"a": 1, "apikey": "k"}))
+            self.assertEqual(world_data.open_meteo("https://api.tidesandcurrents.noaa.gov/x", {"a": 1}),
+                             ("https://api.tidesandcurrents.noaa.gov/x", {"a": 1}))

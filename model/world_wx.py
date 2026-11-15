@@ -23,6 +23,7 @@ No Kalshi, NWS CLI or NBM here; those stay US-only.
 """
 import logging
 import math
+import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -162,6 +163,8 @@ class Cost:
 
 def _get(url: str, params: dict) -> list[dict]:
     """One batched call; always returns a list (Open-Meteo returns a bare object for 1 point)."""
+    if key := os.getenv("OPEN_METEO_API_KEY"):  # paid customer- endpoints: their own, higher limits
+        url, params = url.replace("https://", "https://customer-", 1), {**params, "apikey": key}
     try:
         r = requests.get(url, params=params, timeout=TIMEOUT_S)
     except requests.RequestException as exc:

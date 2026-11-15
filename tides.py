@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from world_data import TIMEOUT, stored
+from world_data import TIMEOUT, open_meteo, stored
 
 API = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
 STATIONS = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
@@ -144,6 +144,7 @@ def _slug(name: str) -> str:
 
 
 def _get(url: str, params: dict) -> dict | list:
+    url, params = open_meteo(url, params)  # NOAA URLs pass through unchanged
     r = httpx.get(url, params=params, headers=HEADERS, timeout=TIMEOUT)
     r.raise_for_status()
     body = r.json()

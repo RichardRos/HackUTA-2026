@@ -503,15 +503,23 @@ GRID_LONS = list(range(-180, 180, GRID_STEP))
 _GRID_CHUNK = 400  # points per request; longer coordinate lists exceed the URL limit
 
 
+def open_meteo(url: str, params: dict) -> tuple[str, dict]:
+    """The free Open-Meteo endpoint, or with OPEN_METEO_API_KEY the paid customer- one (its own, higher limits)."""
+    key = os.getenv("OPEN_METEO_API_KEY")
+    if not key or "open-meteo.com" not in url:
+        return url, params
+    return url.replace("https://", "https://customer-", 1), {**params, "apikey": key}
+
+
 def _grid_fetch(url: str, fields: list[str]) -> dict[str, list]:
     lats = [la for la in GRID_LATS for _ in GRID_LONS]
     lons = [lo for _ in GRID_LATS for lo in GRID_LONS]
     out: dict[str, list] = {f: [] for f in fields}
     extra = {"wind_speed_unit": "ms"} if "wind_speed_10m" in fields else {}
     for i in range(0, len(lats), _GRID_CHUNK):
-        r = httpx.get(url, params={"latitude": ",".join(map(str, lats[i:i + _GRID_CHUNK])),
-                                   "longitude": ",".join(map(str, lons[i:i + _GRID_CHUNK])),
-                                   "current": ",".join(fields), **extra},
+        r = httpx.get(*open_meteo(url, {"latitude": ",".join(map(str, lats[i:i + _GRID_CHUNK])),
+                                        "longitude": ",".join(map(str, lons[i:i + _GRID_CHUNK])),
+                                        "current": ",".join(fields), **extra}),
                       headers={"User-Agent": "nostos-dev research tool"}, timeout=TIMEOUT)
         r.raise_for_status()
         for loc in r.json():
