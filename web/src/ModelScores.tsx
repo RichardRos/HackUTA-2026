@@ -1,5 +1,6 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
 import { useApi } from './api'
+import { cityName, f1, madeAt, notLiveYet, type Tomorrow } from './wx'
 
 type Score = { lead_days: number; model: string; role: string; days: number; mae_f: number; bias_f: number; within_2f_pct: number }
 type City = { location: string; station_id: string; days: number; nostos_mae_f: number | null; nbm_corrected_mae_f: number | null; nbm_mae_f: number | null }
@@ -13,8 +14,6 @@ const SERIES = [
   { key: 'nbm_corrected_f', label: 'NBM corrected', color: '#3987e5', dash: '' },
   { key: 'nbm_f', label: 'NBM', color: 'var(--muted)', dash: '4 3' },
 ] as const
-const cityName = (loc: string) => loc.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-const f1 = (v: number | null) => (v === null ? '–' : v.toFixed(1))
 
 function useLoad<T>(path: string | null) {
   const api = useApi()
@@ -97,6 +96,7 @@ export default function ModelScores() {
   const [city, setCity] = useState<string | null>(null)
   const board = useLoad<Score[]>(`/wx/views/leaderboard?lead_days=${lead}`)
   const cities = useLoad<City[]>('/wx/views/cities')
+  const tomorrow = useLoad<Tomorrow[]>('/wx/forecast/tomorrow')
   const timeline = useLoad<Day[]>(city && `/wx/views/cities/${city}/timeline`)
 
   return (
@@ -106,6 +106,37 @@ export default function ModelScores() {
           <p className="kicker">Daily high temperature · test period Sep 14 – Nov 12, 2026</p>
           <h1>Model scores</h1>
         </header>
+
+        <section className="model-card" aria-labelledby="model-tomorrow">
+          <div className="model-card-head">
+            <h2 id="model-tomorrow" className="section-title">
+              Tomorrow's high · live{tomorrow.data?.[0] && ` · ${tomorrow.data[0].climate_date} · forecast made ${madeAt(tomorrow.data[0].issued_at)}`}
+            </h2>
+          </div>
+          <div className="model-body model-body-board">
+            {notLiveYet(tomorrow.error)
+              ? <p className="model-state">The live forecast starts with tonight's run; scores land tomorrow once NWS publishes the observed highs.</p>
+              : (
+                <Body state={tomorrow} empty="No live forecast yet: it appears after tonight's run.">
+                  {(rows) => (
+                    <table className="model-table">
+                      <thead><tr><th>City</th><th>Nostos</th><th>NBM corr.</th><th>NBM</th></tr></thead>
+                      <tbody>
+                        {rows.map((r) => (
+                          <tr key={r.location}>
+                            <td>{cityName(r.location)} <span className="muted">{r.station_id}</span></td>
+                            <td className="model-best">{f1(r.nostos_f)}°F</td>
+                            <td>{f1(r.nbm_corrected_f)}°F</td>
+                            <td>{f1(r.nbm_f)}°F</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </Body>
+              )}
+          </div>
+        </section>
 
         <section className="model-card" aria-labelledby="model-board">
           <div className="model-card-head">

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useApi } from './api'
 import Markdown, { Inline } from './Markdown'
+import { cityName, f1, madeAt, type Tomorrow } from './wx'
 import { CommodityPriceChart, EtfTrends, YieldCurve, type CurvePoint, type Fund } from './Charts'
 import FocusPanel, { Card } from './FocusPanel'
 import { COMMODITIES, globalWeatherCountryCode, regionalCommodityBenchmarks, toWeatherEvent, type Commodity, type Contract, type GlobalWeather } from './events'
@@ -175,6 +176,26 @@ function GovernmentAnnouncements({ country }: { country: string }) {
 }
 
 function WeatherCard({ country }: { country: string }) {
+  // US: our own model's forecast for its 20 cities; GFS city points when it isn't live (or for every other country).
+  const live = useFetch<Tomorrow[]>(country === 'United States of America' ? '/wx/forecast/tomorrow' : null)
+  if (live.loading) return <Card title="Weather"><p className="muted" aria-live="polite">Loading forecast…</p></Card>
+  if (live.data?.length) return (
+    <Card title="Tomorrow's high · Nostos">
+      <ul className="rows">
+        {live.data.map((r) => (
+          <li key={r.location}>
+            <strong>{cityName(r.location)}</strong> <span>{f1(r.nostos_f)}°F</span>
+            <p className="micro">NOAA blend {f1(r.nbm_f)}°F · corrected {f1(r.nbm_corrected_f)}°F</p>
+          </li>
+        ))}
+      </ul>
+      <p className="micro">Nostos model · forecast made {madeAt(live.data[0].issued_at)} · scored against NWS highs tomorrow</p>
+    </Card>
+  )
+  return <GfsWeatherCard country={country} />
+}
+
+function GfsWeatherCard({ country }: { country: string }) {
   const code = globalWeatherCountryCode(country)
   const weather = useFetch<GlobalWeather[]>(code ? `/weather/global?country=${code}` : null)
   const events = Array.isArray(weather.data)
