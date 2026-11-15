@@ -232,33 +232,54 @@ def treasury_etf_trend(days: int = 30) -> dict:
 # --- Commodity futures by region (Yahoo Finance chart API, front month, no key) ---------------
 
 # commodity -> (symbol, benchmark, region, settlement). Keys double as news topic tags (news.TOPICS).
-COMMODITY_FUTURES = {
+COMMODITY_FUTURES = {  # (Yahoo symbol, name, pricing point, settlement, physical unit); every series Yahoo has with history
     "oil": [
-        ("BZ=F", "Brent", "UK / North Sea", "cash"),
-        ("CL=F", "WTI", "US / Cushing", "physical"),
+        ("BZ=F", "Brent crude", "North Sea (ICE)", "cash", "bbl"),
+        ("CL=F", "WTI crude", "Cushing, Oklahoma (NYMEX)", "physical", "bbl"),
+        ("DBL=F", "Dubai crude", "Arabian Gulf (Platts, NYMEX)", "cash", "bbl"),
+        ("HO=F", "ULSD heating oil", "New York Harbor (NYMEX)", "physical", "gal"),
+        ("RB=F", "RBOB gasoline", "New York Harbor (NYMEX)", "physical", "gal"),
     ],
     "natural-gas": [
-        ("TTF=F", "Dutch TTF", "Netherlands / EU", "cash"),
-        ("NG=F", "Henry Hub", "US / Louisiana", "physical"),
+        ("NG=F", "Henry Hub", "Erath, Louisiana (NYMEX)", "physical", "MMBtu"),
+        ("TTF=F", "Dutch TTF", "Netherlands virtual hub (ICE Endex)", "physical", "MWh"),
+        ("JKM=F", "JKM LNG", "Delivered Japan / Korea / China / Taiwan (Platts, NYMEX)", "cash", "MMBtu"),
     ],
     "metals": [
-        ("GC=F", "Gold", "US / COMEX", "physical"),
-        ("SI=F", "Silver", "US / COMEX", "physical"),
-        ("HG=F", "Copper", "US / COMEX", "physical"),
+        ("GC=F", "Gold", "COMEX, New York vaults", "physical", "oz"),
+        ("SI=F", "Silver", "COMEX, New York vaults", "physical", "oz"),
+        ("PL=F", "Platinum", "NYMEX, New York / Zurich vaults", "physical", "oz"),
+        ("PA=F", "Palladium", "NYMEX, New York / Zurich vaults", "physical", "oz"),
+        ("HG=F", "Copper", "COMEX, US warehouses", "physical", "lb"),
+        ("ALI=F", "Aluminum", "COMEX, US warehouses", "physical", "t"),
+        ("HRC=F", "Hot-rolled steel coil", "US Midwest (CRU index, COMEX)", "cash", "short t"),
+        ("TIO=F", "Iron ore 62% Fe", "CFR Qingdao, China (COMEX)", "cash", "t"),
     ],
     "agriculture": [
-        ("ZW=F", "Wheat", "US / CBOT", "physical"),
-        ("ZC=F", "Corn", "US / CBOT", "physical"),
-        ("KC=F", "Coffee", "US / ICE", "physical"),
-        ("CC=F", "Cocoa", "US / ICE", "physical"),
-        ("SB=F", "Sugar", "US / ICE", "physical"),
+        ("ZW=F", "Chicago SRW wheat", "Chicago / Toledo (CBOT)", "physical", "bu"),
+        ("KE=F", "KC HRW wheat", "Kansas City (CBOT)", "physical", "bu"),
+        ("ZC=F", "Corn", "Illinois River (CBOT)", "physical", "bu"),
+        ("ZS=F", "Soybeans", "Illinois River (CBOT)", "physical", "bu"),
+        ("ZM=F", "Soybean meal", "Central US processors (CBOT)", "physical", "short t"),
+        ("ZL=F", "Soybean oil", "Central US processors (CBOT)", "physical", "lb"),
+        ("ZO=F", "Oats", "Minneapolis / Chicago (CBOT)", "physical", "bu"),
+        ("ZR=F", "Rough rice", "Arkansas (CBOT)", "physical", "cwt"),
+        ("KC=F", "Arabica coffee", "ICE US licensed warehouses", "physical", "lb"),
+        ("CC=F", "Cocoa", "ICE US, Delaware River ports", "physical", "t"),
+        ("SB=F", "Raw sugar #11", "FOB origin, world raw cane (ICE)", "physical", "lb"),
+        ("CT=F", "Cotton", "US Southern warehouses (ICE)", "physical", "lb"),
+        ("OJ=F", "Orange juice (FCOJ)", "Florida (ICE)", "physical", "lb"),
+        ("LBR=F", "Lumber", "US / Canada West mills (CME)", "physical", "1000 bd ft"),
     ],
     "livestock": [
-        ("HE=F", "Lean hogs", "US / CME", "cash"),
-        ("GF=F", "Feeder cattle", "US / CME", "cash"),
-        ("LE=F", "Live cattle", "US / CME", "physical"),
+        ("HE=F", "Lean hogs", "US Midwest (CME index)", "cash", "lb"),
+        ("LE=F", "Live cattle", "US Plains feedlots (CME)", "physical", "lb"),
+        ("GF=F", "Feeder cattle", "US Plains (CME index)", "cash", "lb"),
+        ("DC=F", "Class III milk", "US dairy (CME, USDA price)", "cash", "cwt"),
+        ("CSC=F", "Cheese", "US dairy (CME, USDA price)", "cash", "lb"),
     ],
 }
+SPREADS = {"oil": ("BZ=F", "CL=F")}  # same unit, same grade family: Brent - WTI
 UNITS = {"USX": "US cents", "USD": "USD", "EUR": "EUR"}
 
 
@@ -289,17 +310,18 @@ def commodity_futures(commodity: str, days: int = 30) -> dict:
     with ThreadPoolExecutor(len(specs)) as pool:
         fetched = list(pool.map(lambda spec: _yahoo_closes(spec[0], days), specs))
     contracts = []
-    for (symbol, name, region, settlement), (currency, closes) in zip(specs, fetched):
+    for (symbol, name, region, settlement, per), (currency, closes) in zip(specs, fetched):
         change = (closes[-1]["close"] / closes[0]["close"] - 1) * 100 if len(closes) > 1 else None
         contracts.append({
             "symbol": symbol, "name": name, "region": region, "settlement": settlement,
-            "unit": UNITS.get(currency, currency), "price": closes[-1]["close"] if closes else None,
+            "unit": f"{UNITS.get(currency or 'USD', currency)}/{per}", "price": closes[-1]["close"] if closes else None,
             "closes": closes, "change_pct": round(change, 2) if change is not None else None,
         })
     spread = None
-    a, b = contracts[0], contracts[-1]
-    # Only a two-benchmark pair in the same unit has a meaningful spread (Brent - WTI, not TTF - Henry Hub).
-    if len(contracts) == 2 and a["unit"] == b["unit"] and a["price"] is not None and b["price"] is not None:
+    by = {c["symbol"]: c for c in contracts}
+    pair = SPREADS.get(commodity)
+    if pair and all(by[s]["price"] is not None for s in pair):
+        a, b = by[pair[0]], by[pair[1]]
         spread = {"name": f"{a['name']} - {b['name']}", "value": round(a["price"] - b["price"], 2), "unit": a["unit"]}
     return {"source": "Yahoo Finance, front-month futures", "commodity": commodity, "days": days,
             "contracts": contracts, "spread": spread}

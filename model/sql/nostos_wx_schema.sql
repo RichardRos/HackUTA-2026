@@ -85,3 +85,23 @@ FROM nostos_wx.daily_high_forecasts
 WHERE error_f IS NOT NULL
 GROUP BY 1, 2, 3, 4
 WITH NO DATA;
+
+-- Live forecasts from predict_live.py (the nightly run), kept apart from the backtest table
+-- so they never mix into the leaderboard. One row per city/model/target day/issuance:
+-- every nightly run is kept, so live forecasts can be scored later against what happened.
+--   issued_at = the real wall-clock run time (UTC). bias_f = correction subtracted from the
+--   raw model (NULL for raw rows); weight = the model's share of the Nostos blend.
+CREATE TABLE IF NOT EXISTS nostos_wx.live_forecasts (
+    location      text NOT NULL REFERENCES nostos_wx.locations(location),
+    model         text NOT NULL,
+    role          text NOT NULL CHECK (role IN ('input', 'benchmark', 'nostos')),
+    lead_days     smallint NOT NULL,
+    climate_date  date NOT NULL,
+    day_start     timestamptz NOT NULL,
+    issued_at     timestamptz NOT NULL,
+    high_f        double precision NOT NULL,
+    bias_f        double precision,
+    weight        double precision,
+    PRIMARY KEY (location, model, climate_date, issued_at),
+    CHECK (issued_at < day_start)
+);
