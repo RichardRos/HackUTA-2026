@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 
 import flights
 import ships
+import tides
 import world_data
 import wx_scores
 from db_read import read_query as _query
@@ -997,6 +998,21 @@ def get_marine_grid() -> dict:
     """Current significant wave height (m), period and travel direction (u/v) on the same 10° grid;
     null over land. Source: Open-Meteo Marine."""
     return world_data.marine_grid()
+
+
+@mcp.tool(annotations=ExternalReadOnly)
+def get_tides() -> dict:
+    """Every NOAA CO-OPS tidal station in the US with predicted highs and lows (UTC, metres above
+    MLLW) from yesterday through two days ahead, and each station's level, direction and next
+    turn right now. Source: NOAA Tides & Currents."""
+    return tides.tide_overview()
+
+
+@mcp.tool(annotations=ExternalReadOnly)
+def get_tide_station(station_id: Annotated[str, Field(pattern=r"^\d{7}$")]) -> dict:
+    """One NOAA tide station: 15-minute predicted curve and observed water level from 24 h ago to
+    48 h ahead, plus high/low turns. Station ids come from get_tides."""
+    return tides.tide_station(station_id)
 
 
 @mcp.tool(annotations=ExternalReadOnly)

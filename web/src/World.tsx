@@ -9,10 +9,13 @@ import LayerMenu, { type Layer } from './LayerMenu'
 import type { PlaneDot, ShipDot, TrackPoint } from './Earth'
 import PlanePanel from './PlanePanel'
 import ShipPanel from './ShipPanel'
+import TidePanel from './TidePanel'
+import type { TideOverview, TideStation } from './tideLayer'
 import { COMMODITIES, toCommodityEvents, toEvent, toWeatherEvent, type Commodity, type Contract, type GlobalWeather, type RegionSignal, type SignalEvent } from './events'
 import type { MarineGrid, WeatherGrid } from './weatherLayer'
 
 const Earth = lazy(() => import('./Earth'))
+const NO_TIDES: TideStation[] = []
 
 /** One aircraft from GET /api/flights/global (flights.py normalize_state). */
 type Aircraft = {
@@ -79,6 +82,35 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   const [marineGrid, setMarineGrid] = useState<MarineGrid | null>(null)
   const [marineStatus, setMarineStatus] = useState<'idle' | 'loading' | 'ready' | string>('idle')
   const [weatherLayer, setWeatherLayer] = useState<'off' | 'weather' | 'wind'>('weather')
+  const [showTides, setShowTides] = useState(true)
+  const [tides, setTides] = useState<TideStation[]>([])
+  const [tideStatus, setTideStatus] = useState<'idle' | 'loading' | 'ready' | string>('idle')
+  const [tideMotion, setTideMotion] = useState(1)
+  const [tideClock, setTideClock] = useState<number | null>(null)
+  const [tideId, setTideId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!showTides) {
+      setTideStatus('idle')
+      return
+    }
+    let live = true
+    setTideStatus('loading')
+    // Predictions cover yesterday to +2 days, so one load lasts the session; refresh every 6 h anyway.
+    const load = () => api<TideOverview>('/tides')
+      .then((r) => {
+        if (!live) return
+        setTides(r.stations)
+        setTideStatus('ready')
+      })
+      .catch((e: Error) => live && setTideStatus(e.message))
+    load()
+    const timer = setInterval(load, 6 * 3_600_000)
+    return () => {
+      live = false
+      clearInterval(timer)
+    }
+  }, [api, showTides])
 
   useEffect(() => {
     let live = true
@@ -218,6 +250,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     setCountry(null)
     setMmsi(null)
     setPlaneHex(null)
+    setTideId(null)
     setFocusAt(null)
   }, [])
   useEffect(() => {
@@ -232,6 +265,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     setCountry(null)
     setMmsi(null)
     setPlaneHex(null)
+    setTideId(null)
     setSelected(e)
     setFocusAt({ lat: e.lat, lng: e.lng })
   }, [])
@@ -243,6 +277,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     setSelected(null)
     setMmsi(null)
     setPlaneHex(null)
+    setTideId(null)
     setCountry(name)
     setFocusAt(at ?? null)
   }, [])
@@ -252,6 +287,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     setSelected(null)
     setCountry(null)
     setPlaneHex(null)
+    setTideId(null)
     setMmsi(id)
     const s = shipsRef.current.find((x) => x.mmsi === id)
     if (s) setFocusAt({ lat: s.lat, lng: s.lon })
@@ -260,11 +296,24 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     setSelected(null)
     setCountry(null)
     setMmsi(null)
+    setTideId(null)
     setPlaneHex(hex)
     const a = aircraft.find((x) => x.hex === hex)
     if (a) setFocusAt({ lat: a.lat, lng: a.lon })
   }, [aircraft])
-  const focused = !!(selected || country || mmsi || planeHex)
+  const tidesRef = useRef(tides)
+  tidesRef.current = tides
+  const pickTide = useCallback((id: string) => {
+    setSelected(null)
+    setCountry(null)
+    setMmsi(null)
+    setPlaneHex(null)
+    setTideId(id)
+    const t = tidesRef.current.find((x) => x.id === id)
+    if (t) setFocusAt({ lat: t.lat, lng: t.lon })
+  }, [])
+  const tideStation = tideId ? tides.find((t) => t.id === tideId) ?? null : null
+  const focused = !!(selected || country || mmsi || planeHex || tideStation)
 
   const layers: Layer[] = [
     {
@@ -348,6 +397,39 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       ),
     },
     {
+      id: 'tides',
+      label: 'Tides',
+      icon: <span className="tide-dot" />,
+      color: '#4ccbd1',
+      on: showTides,
+      onChange: setShowTides,
+      note: tideStatus === 'loading' ? 'Loading NOAA tide predictions…'
+        : tideStatus === 'ready' || tideStatus === 'idle'
+          ? (
+            <>
+              {tides.length ? `${tides.length} NOAA tide gauges.` : 'NOAA tide gauges, US coasts.'} Fill shows the water level between low and high; rings spread on the flood and draw in on the ebb.
+              <span className="ship-legend" role="list" aria-label="Tide colors">
+                <span role="listitem"><i className="ship-legend-dot flood" aria-hidden="true" />▲ Rising</span>
+                <span role="listitem"><i className="ship-legend-dot ebb" aria-hidden="true" />▼ Falling</span>
+              </span>
+            </>
+          )
+          : <span className="error" role="alert">{tideStatus}</span>,
+      extra: (
+        <div className="motion" role="radiogroup" aria-label="Tide clock speed">
+          {[1, 720].map((m) => (
+            <button key={m} role="radio" aria-checked={tideMotion === m} className={tideMotion === m ? 'on tide' : 'tide'} onClick={() => setTideMotion(m)}>
+              {m === 1 ? 'Live' : `×${m}`}
+            </button>
+          ))}
+          <span className="micro">
+            {tideMotion === 1 ? 'Current predicted tide.' : 'Time-lapse: a day of tides every two minutes, looping.'}
+            {tideClock !== null && <> Tide clock <b className="tide-clock">{new Date(tideClock).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: false })} UTC</b></>}
+          </span>
+        </div>
+      ),
+    },
+    {
       id: 'commodities',
       label: 'Commodity futures',
       icon: <span className="pip-mark commodity rising" />,
@@ -412,10 +494,12 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       <Suspense fallback={null}>
         <Earth events={markers} selected={selected} onSelect={selectEvent} onCountry={pickCountry} ships={ships} onShip={pickShip} planes={planes} onPlane={pickPlane} motion={motion} track={mmsi ? track : undefined} focusAt={focused ? focusAt : null} greekMode={greekMode}
           weather={weatherLayer === 'off' ? null : weatherGrid} marine={marineGrid}
-          windAndSurf={weatherLayer === 'wind' && marineStatus === 'ready'} />
+          windAndSurf={weatherLayer === 'wind' && marineStatus === 'ready'}
+          tides={showTides ? tides : NO_TIDES} tideMotion={tideMotion} onTide={pickTide} onTideClock={setTideClock} />
       </Suspense>
 
       {mmsi && <ShipPanel key={mmsi} mmsi={mmsi} onTrack={setTrack} onClose={clearFocus} />}
+      {tideStation && <TidePanel key={tideStation.id} station={tideStation} onClose={clearFocus} />}
       {planeHex && <PlanePanel key={planeHex} hex={planeHex} aircraft={aircraft.find((a) => a.hex === planeHex) ?? null} onClose={clearFocus} />}
 
       {country && <CountryPanel key={country} country={country} onClose={clearFocus} mode={view}
