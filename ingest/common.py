@@ -12,9 +12,12 @@ Read from the environment first, then from the .env file named by NOSTOS_ENV
 """
 from __future__ import annotations
 
+import http.client
 import json
 import math
 import os
+import socket
+import ssl
 import sys
 import time
 import urllib.error
@@ -36,6 +39,7 @@ USER_AGENT = "nostos-ingest/2.0 (HackUTA 2026)"
 # Environment / logging / time
 # ---------------------------------------------------------------------------
 ENV_KEYS = ("TIMESCALE_SERVICE_URL", "EIA_API_KEY", "NWS_USER_AGENT")
+PASSWORD_KEYS = ("PGPASSWORD", "TIMESCALE_PASSWORD", "TIMESCALE_SERVICE_PASSWORD")
 
 
 def env_files() -> list[Path]:
@@ -46,15 +50,30 @@ def env_files() -> list[Path]:
 def load_env(quiet: bool = False) -> None:
     """Fill missing keys from the .env files. Real environment variables win; an exported
     but empty variable counts as missing (so it can't hide the .env value)."""
-    for k in ENV_KEYS:
+    for k in ENV_KEYS + PASSWORD_KEYS:
         if k in os.environ and not os.environ[k].strip():
             del os.environ[k]
     loaded = [p for p in env_files() if p.is_file() and load_dotenv(p)]
+    # Tiger Cloud's credentials file keeps the password out of the URL, on its own line.
+    # libpq reads PGPASSWORD; accept the other names too.
+    if not os.getenv("PGPASSWORD"):
+        for k in PASSWORD_KEYS[1:]:
+            if os.getenv(k):
+                os.environ["PGPASSWORD"] = os.environ[k]
+                break
     if not quiet:
         found = [k for k in ENV_KEYS if os.getenv(k)]
         missing = [k for k in ENV_KEYS if not os.getenv(k)]
         log(f"env: read {', '.join(str(p) for p in loaded) or 'no .env file'}; "
-            f"set: {', '.join(found) or 'none'}" + (f"; missing: {', '.join(missing)}" if missing else ""))
+            f"set: {', '.join(found) or 'none'}" + (f"; missing: {', '.join(missing)}" if missing else "")
+            + f"; db password: {_password_source()}")
+
+
+def _password_source() -> str:
+    url = os.getenv("TIMESCALE_SERVICE_URL") or ""
+    if urllib.parse.urlsplit(url).password:
+        return "in URL"
+    return "PGPASSWORD" if os.getenv("PGPASSWORD") else "none"
 
 
 def db_url() -> str:
@@ -62,6 +81,10 @@ def db_url() -> str:
     if not url:
         sys.exit("TIMESCALE_SERVICE_URL is not set. Add a line TIMESCALE_SERVICE_URL=postgres://... to "
                  f"{REPO / '.env'} (or export it, or point NOSTOS_ENV at another .env file).")
+    if _password_source() == "none":
+        sys.exit("TIMESCALE_SERVICE_URL has no password and PGPASSWORD is not set.\n"
+                 "  Locally: add PGPASSWORD=... (from the Tiger Cloud credentials file) to .env.\n"
+                 "  GitHub Actions: add a repo secret TIMESCALE_PASSWORD with that value.")
     return url
 
 
@@ -124,14 +147,25 @@ def _open(url: str, params=None, headers=None, retries: int = 5, timeout: int = 
         time.sleep(wait)
 
 
+_READ_ERRORS = (ConnectionError, TimeoutError, socket.timeout, http.client.HTTPException, ssl.SSLError)
+
+
+def get_bytes(url: str, params=None, headers=None, retries: int = 5, timeout: int = 120) -> bytes:
+    """GET the whole body, retrying when the connection drops mid-download too."""
+    for attempt in range(1, retries + 1):
+        try:
+            with _open(url, params, headers, retries=retries, timeout=timeout) as resp:
+                return resp.read()
+        except _READ_ERRORS as e:
+            if attempt == retries:
+                raise RuntimeError(f"giving up after {retries} tries reading {url}: {e}") from None
+            wait = min(60, 2 ** attempt)
+            log(f"  retry {attempt}/{retries} in {wait}s (read failed: {str(e)[:120]})")
+            time.sleep(wait)
+
+
 def get_json(url: str, params=None, headers=None, **kw):
-    with _open(url, params, headers, **kw) as resp:
-        return json.load(resp)
-
-
-def get_bytes(url: str, params=None, **kw) -> bytes:
-    with _open(url, params, **kw) as resp:
-        return resp.read()
+    return json.loads(get_bytes(url, params, headers, **kw))
 
 
 def iter_lines(url: str, **kw) -> Iterator[str]:
@@ -272,6 +306,18 @@ def require_schema_v3(conn: psycopg.Connection) -> None:
     if not ok:
         sys.exit("Schema is missing the NOAA/national columns. Run first:\n"
                  "    python db/run_sql.py db/06_national_noaa.sql")
+
+
+def require_schema_v4(conn: psycopg.Connection) -> None:
+    require_schema_v3(conn)
+    ok = conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'weather_points' AND column_name = 'country')"
+    ).fetchone()[0]
+    if not ok:
+        sys.exit("Schema is missing the global/GFS changes. Run first:\n"
+                 "    python db/run_sql.py db/13_global_gfs.sql\n"
+                 "(or skip GFS with --skip gfs)")
 
 
 if __name__ == "__main__":

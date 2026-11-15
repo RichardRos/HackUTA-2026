@@ -38,6 +38,7 @@ python db/run_sql.py -c "SELECT * FROM scoreboard_summary"
 | `10_open_observations.sql` | NOAA/FRED/CFTC/port-condition/freight-rate time-series observations |
 | `11_ingest_monitoring.sql` | Ingest runs, retries/DLQ, data checks, and service health |
 | `12_news_tags.sql` | `rss_articles.tags` (feed sections + keyword topics, GIN index) |
+| `13_global_gfs.sql` | Global weather: `weather_points` can hold world-city points (`purpose = 'global'`, no BA, `country`), GFS source (`gfs_0p25`), and `point_forecast_asof()` for non-BA points. |
 | `99_clear_fake.sql` | Deletes the fake data. **Run it BEFORE the real backfill.** |
 
 `run_sql.py` runs each statement with autocommit, like `psql -f`. Continuous aggregates can't be created inside a transaction.

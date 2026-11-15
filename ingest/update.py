@@ -12,6 +12,9 @@ Parts (--only / --skip take a comma list):
                 that isn't stored yet (issued_at = NOAA publish time)
   nws_forecast  NWS gridpoint forecast for every station (issued_at = grid updateTime)
   nws_obs       NWS station observations for the last --obs-hours
+  gfs           NOAA GFS 0.25° global model (runs 00/06/12/18Z, ~3.5-5 h to post):
+                each fully posted run from the last --gfs-hours that isn't stored,
+                leads --gfs-leads, at every point (US stations + global cities)
 
 Each part runs independently; exit code 1 if any part failed.
 Scheduled by .github/workflows/ingest.yml (or cron; see ingest/README.md).
@@ -30,7 +33,7 @@ import noaa_nbm
 import noaa_nws
 import weather
 
-PARTS = ("eia", "subba", "nbm", "nws_forecast", "nws_obs")
+PARTS = ("eia", "subba", "nbm", "nws_forecast", "nws_obs", "gfs")
 
 
 def threaded(items, fn, workers):
@@ -127,6 +130,33 @@ def update_nws_obs(conn, now, args, points):
         raise RuntimeError("every NWS observation request failed")
 
 
+def update_gfs(conn, now, args):
+    """Store every GFS run from the last --gfs-hours that is fully posted and not stored yet."""
+    import noaa_gfs
+
+    if not weather.has_global_schema(conn):
+        raise RuntimeError("run db/13_global_gfs.sql first (or --skip gfs)")
+    leads = noaa_gfs.parse_leads(args.gfs_leads)
+    points = weather.load_all_points(conn)
+    newest = c.floor_hour(now).replace(hour=now.hour // 6 * 6)
+    stored = 0
+    for back in range(0, args.gfs_hours + 1, 6):
+        cycle = newest - timedelta(hours=back)
+        files = noaa_gfs.run_files(cycle)
+        if any(h not in files for h in leads):
+            c.log(f"GFS {cycle:%Y-%m-%d %H}Z: not fully posted yet ({len(files)} steps so far)")
+            continue
+        if weather.forecast_exists(conn, noaa_gfs.MODEL, noaa_gfs.issued_at(cycle, [files[h] for h in leads])):
+            continue
+        issued, cells, n = weather.store_gfs_run(conn, cycle, leads, points, args.gfs_fields,
+                                                 args.gfs_workers, files)
+        stored += 1
+        c.log(f"GFS {cycle:%Y-%m-%d %H}Z: {cells} grid cells for {len(points)} points, {n} rows "
+              f"(issued {issued:%H:%M}Z)")
+    if not stored:
+        c.log("GFS: no new runs")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--only", default=",".join(PARTS), help=f"parts to run: {','.join(PARTS)}")
@@ -135,6 +165,10 @@ def main() -> None:
                    help="re-pull this many past hours of EIA data to catch late values/revisions")
     p.add_argument("--nbm-hours", type=int, default=6, help="catch up NBM cycles from the last N hours")
     p.add_argument("--obs-hours", type=int, default=30, help="hours of NWS observations to (re)load")
+    p.add_argument("--gfs-hours", type=int, default=18, help="catch up GFS runs from the last N hours")
+    p.add_argument("--gfs-leads", default="1-72", help="GFS forecast hours to store (default 1-72, hourly)")
+    p.add_argument("--gfs-fields", default="core", choices=("core", "all"))
+    p.add_argument("--gfs-workers", type=int, default=16, help="parallel range reads per GFS run")
     p.add_argument("--workers", type=int, default=8)
     args = p.parse_args()
 
@@ -151,6 +185,8 @@ def main() -> None:
             c.log("new stations configured: syncing respondents and weather points")
             eia.sync_respondents(conn)
             weather.sync_points(conn)
+        if weather.has_global_schema(conn) and weather.global_points_missing(conn):
+            c.log(f"synced {weather.sync_global_points(conn)} global points")
         points = weather.load_points(conn)
 
         jobs = {
@@ -159,6 +195,7 @@ def main() -> None:
             "nbm": lambda: update_nbm(conn, now, args, points),
             "nws_forecast": lambda: update_nws_forecast(conn, now, args, points),
             "nws_obs": lambda: update_nws_obs(conn, now, args, points),
+            "gfs": lambda: update_gfs(conn, now, args),
         }
         for name in PARTS:
             if name not in parts:
