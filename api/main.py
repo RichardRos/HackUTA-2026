@@ -436,4 +436,9 @@ if (WEB_DIST / "index.html").is_file():
         return FileResponse(WEB_DIST / "index.html")
 
 
+# Pitch PDFs, public (no sign-in) so a QR code on the flyer or a slide opens them on any phone.
+PITCH_DIR = FilePath(__file__).resolve().parent.parent / "pitch"
+if PITCH_DIR.is_dir():
+    app.mount("/pitch", StaticFiles(directory=PITCH_DIR), name="pitch")
+
 app.mount("/", mcp_app)  # Last: the root mount would otherwise swallow /api.
