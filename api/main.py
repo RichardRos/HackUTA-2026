@@ -387,11 +387,22 @@ def country_filings(
     return _run(tools.get_country_filings, country, q, days)
 
 
+def _warm_voyage() -> None:
+    try:
+        from voyage import grid, storage
+
+        storage.current()
+        grid.ocean()
+    except Exception as exc:  # noqa: BLE001 (routing still loads them on its first request)
+        logging.getLogger("uvicorn.error").warning("voyage warm-up failed: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with mcp_app.lifespan(app):  # FastMCP's session manager must run
         ships.tracker.seed(await asyncio.to_thread(_stored_vessels))
         ships.tracker.start()  # AIS websocket; no-op without AISSTREAM_API_KEY
+        warm = asyncio.create_task(asyncio.to_thread(_warm_voyage))  # noqa: F841 (held while serving); first route no longer pays ~3 s for model + grid
         yield
         await ships.tracker.stop()
     assistant_store.close_pool()

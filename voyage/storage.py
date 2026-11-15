@@ -45,6 +45,9 @@ def _bucket():
     bucket = os.getenv("VULTR_OBJECT_STORAGE_BUCKET")
     if not endpoint or not bucket:
         return None
+    if not (os.getenv("VULTR_OBJECT_STORAGE_ACCESS_KEY") and os.getenv("VULTR_OBJECT_STORAGE_SECRET_KEY")):
+        log.warning("VULTR_OBJECT_STORAGE_ACCESS_KEY/SECRET_KEY not both set: using the local model only")
+        return None  # half-configured credentials made boto3 raise and broke every route
     import boto3
 
     client = boto3.client("s3", endpoint_url=endpoint if endpoint.startswith("http") else f"https://{endpoint}",

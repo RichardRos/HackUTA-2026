@@ -52,35 +52,34 @@ class RateLimited(RuntimeError):
     """The forecast provider throttled us (free tier: 600 points/min, 10k/day)."""
 
 
-def _fetch(url: str, points: list[tuple[float, float]], fields: list[str], days: int, extra: dict) -> list[dict]:
-    out = []
-    for i in range(0, len(points), CHUNK):
-        chunk = points[i:i + CHUNK]
-        r = httpx.get(url, params={"latitude": ",".join(f"{p[0]:g}" for p in chunk),
-                                   "longitude": ",".join(f"{p[1]:g}" for p in chunk),
-                                   "hourly": ",".join(fields), "forecast_days": days, "timezone": "GMT", **extra},
-                      headers=HEADERS, timeout=httpx.Timeout(30.0))
-        if r.status_code == 429:
-            raise RateLimited("the forecast provider is rate-limiting this server; try again in a minute"
-                              " (or set OPEN_METEO_API_KEY)")
-        r.raise_for_status()
-        body = r.json()
-        out.extend(body if isinstance(body, list) else [body])
-    return out
+def _fetch(url: str, chunk: list[tuple[float, float]], fields: list[str], days: int, extra: dict) -> list[dict]:
+    r = httpx.get(url, params={"latitude": ",".join(f"{p[0]:g}" for p in chunk),
+                               "longitude": ",".join(f"{p[1]:g}" for p in chunk),
+                               "hourly": ",".join(fields), "forecast_days": days, "timezone": "GMT", **extra},
+                  headers=HEADERS, timeout=httpx.Timeout(30.0))
+    if r.status_code == 429:
+        raise RateLimited("the forecast provider is rate-limiting this server; try again in a minute"
+                          " (or set OPEN_METEO_API_KEY)")
+    r.raise_for_status()
+    body = r.json()
+    return body if isinstance(body, list) else [body]
 
 
 def _load(points: list[tuple[float, float]]) -> None:
-    """Fetch every point not in the cache (both sources in parallel) and store it."""
+    """Fetch every point not in the cache (all chunks of both sources in parallel) and store it."""
     now = time.monotonic()
     with _lock:
         missing = [p for p in points if p not in _cache or now - _cache[p][0] > TTL_S]
     if not missing:
         return
     marine_url, wind_url, key = _hosts()
-    with ThreadPoolExecutor(2) as pool:
-        marine_f = pool.submit(_fetch, marine_url, missing, MARINE_VARS, MARINE_DAYS, key)
-        wind_f = pool.submit(_fetch, wind_url, missing, WIND_VARS, WIND_DAYS, {"wind_speed_unit": "ms", **key})
-        marine, wind = marine_f.result(), wind_f.result()
+    chunks = [missing[i:i + CHUNK] for i in range(0, len(missing), CHUNK)]
+    # A long route is several chunks; one after another they took ~3 s each, so fetch them all at once.
+    with ThreadPoolExecutor(min(16, 2 * len(chunks))) as pool:
+        marine_f = [pool.submit(_fetch, marine_url, c, MARINE_VARS, MARINE_DAYS, key) for c in chunks]
+        wind_f = [pool.submit(_fetch, wind_url, c, WIND_VARS, WIND_DAYS, {"wind_speed_unit": "ms", **key}) for c in chunks]
+        marine = [m for f in marine_f for m in f.result()]
+        wind = [w for f in wind_f for w in f.result()]
     with _lock:
         for p, m, w in zip(missing, marine, wind):
             hm, hw = m.get("hourly") or {}, w.get("hourly") or {}

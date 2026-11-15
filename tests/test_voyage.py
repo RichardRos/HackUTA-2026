@@ -300,3 +300,22 @@ class VultrJobTest(unittest.TestCase):
         self.assertIn("trap 'poweroff' EXIT", script)
         self.assertIn("python -m voyage.train --no-ais", script)
         self.assertIn("voyage/logs/nostos-train-t.log", script)
+
+
+class ParallelForecastTest(unittest.TestCase):
+    def test_chunks_fetched_in_parallel_stay_matched_to_their_points(self):
+        import time as _time
+
+        points = [(float(i % 80), float(i)) for i in range(200)]  # 3 chunks
+
+        def fake(url, chunk, fields, days, extra):
+            _time.sleep(0.2 if chunk[0] == points[0] else 0)  # first chunk finishes last
+            return [{"hourly": {"time": ["t"], fields[0]: [p[1]]}} for p in chunk]
+
+        conditions._cache.clear()
+        with patch.object(conditions, "_fetch", side_effect=fake):
+            conditions._load(points)
+        for p in points:
+            data = conditions._cache[p][1]
+            self.assertEqual((data["wave_height"], data["wind_speed_10m"]), ([p[1]], [p[1]]))
+        conditions._cache.clear()
