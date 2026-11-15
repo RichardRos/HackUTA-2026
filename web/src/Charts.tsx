@@ -226,8 +226,8 @@ const fmtTideTime = (ms: number) => {
   return `${d.toLocaleDateString([], { weekday: 'short', timeZone: 'UTC' })} ${d.toISOString().slice(11, 16)}`
 }
 
-/** Water level above MLLW: NOAA's predicted curve (area) and the gauge's observed level, past to +48 h. */
-export function TideChart({ predicted, observed, events, now }: { predicted: TidePoint[]; observed: TidePoint[]; events: TidePoint[]; now: number }) {
+/** Water level above the datum: the predicted (or modelled) curve (area) and the gauge's observed level, past to +48 h. */
+export function TideChart({ predicted, observed, events, now, datum = 'MLLW' }: { predicted: TidePoint[]; observed: TidePoint[]; events: TidePoint[]; now: number; datum?: 'MLLW' | 'MSL' }) {
   const H = 210
   const pad = { l: 40, r: 64, t: 16, b: 24 }
   const ms = (p: TidePoint) => Date.parse(p.t)
@@ -259,7 +259,7 @@ export function TideChart({ predicted, observed, events, now }: { predicted: Tid
         {observed.length > 1 && <li><svg width="18" height="8" aria-hidden="true"><line x1="0" y1="4" x2="18" y2="4" stroke={NOW} strokeWidth="2" /></svg>Observed</li>}
       </ul>
       <div className="chart-plot">
-        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Tide height above MLLW, predicted${observed.length > 1 ? ' and observed' : ''}, ${fmtTideTime(t0)} to ${fmtTideTime(t1)} UTC`}
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Tide height ${datum === 'MSL' ? 'relative to mean sea level' : 'above MLLW'}, predicted${observed.length > 1 ? ' and observed' : ''}, ${fmtTideTime(t0)} to ${fmtTideTime(t1)} UTC`}
           onMouseMove={hover.onMove} onMouseLeave={hover.onLeave}>
           <defs>
             <linearGradient id="tide-fill" x1="0" x2="0" y1="0" y2="1">

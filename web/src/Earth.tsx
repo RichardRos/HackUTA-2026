@@ -62,6 +62,7 @@ type Props = {
   weather?: WeatherGrid | null
   marine?: MarineGrid | null
   windAndSurf?: boolean
+  temperature?: boolean // paint the temperature/rain texture; off for Wind & Surf so the motion reads
   greekMode?: boolean
   tides?: TideStation[] // NOAA tide gauges; empty hides the layer
   tideMotion?: number // tide clock multiplier; 1 = live
@@ -80,11 +81,11 @@ const NO_TRACK: TrackPoint[] = []
 const NO_TIDES: TideStation[] = []
 const SHIP = '#ffc77a' // the Figma's ship amber
 
-export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, greekMode = false, tides = NO_TIDES, tideMotion = 1, onTide, onTideClock }: Props) {
+export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, temperature = true, greekMode = false, tides = NO_TIDES, tideMotion = 1, onTide, onTideClock }: Props) {
   const globe = useRef<GlobeMethods | undefined>(undefined)
   const [box, { width, height }] = useSize()
   const [hover, setHover] = useState<Country | null>(null)
-  const texture = useMemo(() => weather ? weatherTexture(weather) : null, [weather])
+  const texture = useMemo(() => weather && temperature ? weatherTexture(weather) : null, [weather, temperature])
   const mapMaterial = useMemo(() => texture
     ? new MeshPhongMaterial({ color: '#ffffff', map: texture, specular: '#000000', shininess: 0 })
     : greekMode ? new MeshPhongMaterial({ color: GREEK_PALETTE.ocean, specular: '#000000', shininess: 0 }) : OCEAN,

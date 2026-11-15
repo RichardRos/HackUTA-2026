@@ -1002,16 +1002,17 @@ def get_marine_grid() -> dict:
 
 @mcp.tool(annotations=ExternalReadOnly)
 def get_tides() -> dict:
-    """Every NOAA CO-OPS tidal station in the US with predicted highs and lows (UTC, metres above
-    MLLW) from yesterday through two days ahead, and each station's level, direction and next
-    turn right now. Source: NOAA Tides & Currents."""
+    """Tide stations worldwide with predicted highs and lows (UTC, metres; each station's `datum`
+    is MLLW for NOAA or MSL for the global model) from yesterday through two days ahead, and each
+    station's level, direction and next turn right now. Sources: NOAA Tides & Currents (US
+    gauges and harmonic stations) and Open-Meteo Marine's global tide model elsewhere."""
     return tides.tide_overview()
 
 
 @mcp.tool(annotations=ExternalReadOnly)
-def get_tide_station(station_id: Annotated[str, Field(pattern=r"^\d{7}$")]) -> dict:
-    """One NOAA tide station: 15-minute predicted curve and observed water level from 24 h ago to
-    48 h ahead, plus high/low turns. Station ids come from get_tides."""
+def get_tide_station(station_id: Annotated[str, Field(pattern=tides.STATION_ID)]) -> dict:
+    """One tide station: predicted curve, observed water level (NOAA gauges only) and high/low
+    turns from 24 h ago to 48 h ahead. Station ids come from get_tides."""
     return tides.tide_station(station_id)
 
 
