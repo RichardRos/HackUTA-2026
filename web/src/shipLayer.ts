@@ -269,7 +269,7 @@ export class ShipLayer {
     this.material = new ShaderMaterial({
       uniforms: {
         map: { value: style.texture() },
-        size: { value: style.iconPx * Math.min(devicePixelRatio, 1.5) },
+        size: { value: style.iconPx * Math.min(devicePixelRatio, 2) },
         colorByCategory: { value: style.colorByCategory ? 1 : 0 },
       },
       vertexShader: vertex,

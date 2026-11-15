@@ -146,7 +146,7 @@ export class TideLayer {
     this.globe = globe
     this.material = new ShaderMaterial({
       uniforms: {
-        pixelRatio: { value: Math.min(devicePixelRatio, 1.5) },
+        pixelRatio: { value: Math.min(devicePixelRatio, 2) },
         uTime: { value: 0 },
         uAnimate: { value: this.motionQuery.matches ? 0 : 1 },
       },
