@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { useApi } from './api'
 import { CommodityPriceChart, EtfTrends, YieldCurve, type CurvePoint, type Fund } from './Charts'
 import FocusPanel, { Card } from './FocusPanel'
@@ -234,6 +234,13 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
   const local = useFetch<{ region: string | null; news: News[]; hours: number }>(!commodityMode && coordinates
     ? `/news/local?lat=${coordinates.lat.toFixed(3)}&lon=${coordinates.lng.toFixed(3)}` : null)
   const benchmarks = nearestCommodityBenchmarks(commodityFutures.data?.contracts ?? [], coordinates)
+  const us = country === 'United States of America'
+  // Rundown cards mount immediately and show their own loading/error/missing state, so the card set
+  // (and the grid) never changes when the fetch lands.
+  const fromRundown = <T,>(x: T | Failed | undefined, missing: string, show: (x: T) => ReactNode, failText = '') =>
+    !r ? (rundown.error ? <p className="error" role="alert">{rundown.error}</p> : <p className="muted">Loading sources…</p>)
+      : x === undefined ? <p className="muted">{missing}</p>
+        : failed(x) ? <p className="error">{failText}{x.error}</p> : show(x)
 
   const briefing = (
     <div className="editorial" aria-live="polite">
@@ -305,8 +312,6 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
     <FocusPanel label={`${country} rundown`} kicker={commodityMode ? 'Commodity briefing' : 'Country briefing'} title={country}
       hero={briefing}
       aside={commodityMode ? commodityMarketList : markets} onClose={onClose}>
-      {!commodityMode && rundown.loading && <Card><p className="muted">Loading sources…</p></Card>}
-      {!commodityMode && rundown.error && <Card><p className="error" role="alert">{rundown.error}</p></Card>}
       {commodityMode ? (
         <Card title="Commodity news">
           {commodityNews.loading && <p className="muted">Loading headlines…</p>}
@@ -339,18 +344,18 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
                 </>
               )}
         </Card>
-      ) : r && (
+      ) : (
         <Card title="News">
-          {failed(r.news) ? <p className="error">{r.news.error}</p> : !r.news.length ? <p className="muted">No WSJ or FT coverage in the last 14 days.</p> : (
+          {fromRundown(r?.news, 'No news returned.', (news) => !news.length ? <p className="muted">No WSJ or FT coverage in the last 14 days.</p> : (
             <ul className="rows">
-              {r.news.map((n) => (
+              {news.map((n) => (
                 <li key={n.id}>
                   <a href={n.link} target="_blank" rel="noreferrer">{n.title}</a>
                   <p className="micro">{n.source} / {day(n.published_at)}</p>
                 </li>
               ))}
             </ul>
-          )}
+          ))}
         </Card>
       )}
       {commodityMode ? (
@@ -371,45 +376,46 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
         </>
       ) : <WeatherCard country={country} />}
       <GovernmentAnnouncements country={country} />
-      {!commodityMode && r?.treasury_curve && !failed(r.treasury_curve) && (
-        <Card title={country === 'United States of America' ? 'Treasury yield curve' : 'Government yield curve'}>
-          <YieldCurve now={r.treasury_curve} past={r.treasury_curve.month_ago} />
-          <p className="micro">Source: {r.treasury_curve.source}</p>
+      {!commodityMode && (
+        <Card title={us ? 'Treasury yield curve' : 'Government yield curve'}>
+          {fromRundown(r?.treasury_curve, `No yield curve available for ${country}.`, (curve) => (
+            <>
+              <YieldCurve now={curve} past={curve.month_ago} />
+              <p className="micro">Source: {curve.source}</p>
+            </>
+          ), 'Yield curve unavailable: ')}
         </Card>
       )}
-      {!commodityMode && r?.bonds && (
+      {!commodityMode && (
         <Card title="Government bonds">
-          {failed(r.bonds) ? <p className="muted">Bond yields unavailable: {r.bonds.error}</p> : (
+          {fromRundown(r?.bonds, `No government bond data available for ${country}.`, (bonds) => (
             <>
               <ul className="rows">
-                {r.bonds.map((b) => (
+                {bonds.map((b) => (
                   <li key={b.symbol}>
                     <strong>{b.tenor}</strong> <span>{b.yield.toFixed(2)}%</span>
                     {b.change_1m_bp !== null && <span className="micro"> {b.change_1m_bp >= 0 ? '+' : ''}{b.change_1m_bp.toFixed(0)} bp / 1M</span>}
                   </li>
                 ))}
               </ul>
-              <p className="micro">{r.bonds[0]?.name.replace(/\d+ (Year|Month) /, '')} · TradingView</p>
+              <p className="micro">{bonds[0]?.name.replace(/\d+ (Year|Month) /, '')} · TradingView</p>
             </>
-          )}
+          ), 'Bond yields unavailable: ')}
         </Card>
       )}
-      {!commodityMode && r?.treasury_curve && failed(r.treasury_curve) && (
-        <Card title="Government yield curve">
-          <p className="muted">Yield curve unavailable: {r.treasury_curve.error}</p>
-        </Card>
-      )}
-      {!commodityMode && r?.treasury_etfs && !failed(r.treasury_etfs) && (
+      {!commodityMode && us && (
         <Card title="Treasury ETFs, last month">
-          <EtfTrends funds={r.treasury_etfs.funds} />
-          <p className="micro">Source: Alpaca, iShares Treasury ETFs</p>
+          {fromRundown(r?.treasury_etfs, 'No Treasury ETF data returned.', (etfs) => (
+            <>
+              <EtfTrends funds={etfs.funds} />
+              <p className="micro">Source: Alpaca, iShares Treasury ETFs</p>
+            </>
+          ))}
         </Card>
       )}
-      {r && (
-        <Card title="SEC filings">
-          {failed(r.filings) ? <p className="error">{r.filings.error}</p> : <FilingList country={country} initial={r.filings} />}
-        </Card>
-      )}
+      <Card title="SEC filings">
+        {fromRundown(r?.filings, 'No filings returned.', (filings) => <FilingList country={country} initial={filings} />)}
+      </Card>
     </FocusPanel>
   )
 }

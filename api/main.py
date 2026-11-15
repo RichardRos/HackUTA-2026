@@ -30,6 +30,7 @@ from fastmcp.server.auth.providers.jwt import JWTVerifier  # noqa: E402
 
 import mcp_server as tools  # noqa: E402
 import ships  # noqa: E402
+import wx_scores  # noqa: E402
 from api import ask, assistant, assistant_store  # noqa: E402
 from mcp_server import app as mcp_app  # noqa: E402
 
@@ -204,6 +205,22 @@ def wx_cities(start: date | None = None, end: date | None = None, lead_days: WxL
 def wx_city(location: Annotated[str, Path(max_length=40)], start: date | None = None,
             end: date | None = None, lead_days: WxLead = 1):
     return _run(tools.get_wx_city, location, start, end, lead_days)
+
+
+@rest.get("/wx/views/leaderboard")
+def wx_view_leaderboard(lead_days: WxLead | None = None):
+    """Test-period leaderboard view (nostos_wx.leaderboard_test); omit lead_days for all three."""
+    return _run(wx_scores.leaderboard_test, lead_days)
+
+
+@rest.get("/wx/views/cities")
+def wx_view_cities():
+    return _run(wx_scores.city_accuracy)
+
+
+@rest.get("/wx/views/cities/{location}/timeline")
+def wx_view_city_timeline(location: Annotated[str, Path(max_length=40, pattern=r"^[a-z_]+$")]):
+    return _run(wx_scores.city_timeline, location)
 
 
 @rest.get("/ships")

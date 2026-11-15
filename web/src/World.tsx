@@ -480,7 +480,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       )}
 
       {!(greekMode && lore && !focused) && (
-        <Assistant key={onScreen?.topic ?? 'global'} topic={onScreen?.topic} context={onScreen?.context.slice(0, 2000)} greekMode={greekMode} />
+        <Assistant key={`chat:${onScreen?.topic ?? ''}`} topic={onScreen?.topic} context={onScreen?.context.slice(0, 2000)} greekMode={greekMode} />
       )}
     </div>
   )

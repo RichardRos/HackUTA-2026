@@ -314,8 +314,9 @@ main { height: calc(100% - 72px); }
 .focus .hero { grid-column: 2 / -1; grid-row: 1; }
 .focus.has-aside .hero { grid-column: 2 / 4; }
 .focus .hero-aside { grid-column: 4; grid-row: 1; overflow-y: auto; }
-.focus-cards { grid-column: 1 / -1; grid-row: 2; min-height: 0; display: grid; gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); grid-auto-rows: minmax(0, 1fr); } /* every card the same size */
+.focus-cards { grid-column: 1 / -1; grid-row: 2; min-height: 0; display: grid; gap: 16px; overflow-y: auto; scrollbar-width: thin; align-content: start;
+  grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: 340px; } /* fixed columns and row height: every card the same size, no reflow as data lands */
+.focus-cards .card-body { flex: 1 1 0; } /* body fills the reserved height and scrolls; content never grows the card */
 .focus-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 12px; }
 .focus-head .kicker { margin-bottom: 6px; }
 .focus-head h2 { font-size: 30px; line-height: 1.1; }
@@ -336,7 +337,7 @@ main { height: calc(100% - 72px); }
   .focus { grid-template-columns: var(--mini) minmax(0, 1fr); grid-template-rows: var(--mini); grid-auto-rows: minmax(260px, auto); overflow-y: auto; inset: 12px; }
   .focus .hero, .focus.has-aside .hero { grid-column: 2; }
   .focus .hero-aside { grid-column: 1 / -1; grid-row: auto; }
-  .focus-cards { grid-row: auto; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); grid-auto-rows: 320px; }
+  .focus-cards { grid-row: auto; overflow: visible; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 320px; }
   .world.focused .earth { inset: 64px auto auto 12px; }
   .focus { inset: 64px 12px 12px; }
   .editorial-cols { grid-template-columns: 1fr; }
@@ -350,6 +351,7 @@ main { height: calc(100% - 72px); }
   .world.focused .commodity-select select { width: 100%; }
   .world.focused .earth { inset: 112px auto auto 12px; }
   .world.focused .focus { inset: 112px 12px 12px; }
+  .focus-cards { grid-template-columns: minmax(0, 1fr); }
 }
 @media (prefers-reduced-motion: reduce) { .world .earth { transition: none; } }
 
@@ -630,3 +632,33 @@ html[data-greek="true"] .splash .earth { top: 50%; }
   .nav nav { gap: 12px; }
   .greek-toggle { margin-right: 8px; }
 }
+
+/* ===== Model page (ModelScores.tsx) ===== */
+.model-card { background: var(--surface); border: 1px solid var(--line); border-radius: 2px; padding: 16px; margin-top: 16px; min-width: 0; }
+.model-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-bottom: 12px; }
+.model-card-head .section-title { margin: 0; }
+.model-leads { display: flex; gap: 4px; }
+.model-leads button { min-height: 36px; padding: 0 12px; border: 1px solid var(--line); border-radius: 2px; background: transparent; font: 400 12px var(--mono); text-transform: uppercase; }
+.model-leads button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.model-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 16px; }
+.model-body { overflow-y: auto; }
+.model-body-board { height: 340px; }
+.model-body-cities, .model-body-timeline { height: 420px; }
+.model-state { margin: 0; color: var(--muted); font-size: 14px; }
+.model-state.error { color: var(--rising); }
+.model-table { width: 100%; border-collapse: collapse; font: 400 13px var(--mono); }
+.model-table th { position: sticky; top: 0; background: var(--surface); color: var(--muted); font-weight: 400; font-size: 11px; text-transform: uppercase; }
+.model-table th, .model-table td { height: 32px; padding: 0 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.model-table th:first-child, .model-table td:first-child { text-align: left; padding-left: 0; }
+.model-ours td { color: var(--accent); }
+.model-best { color: var(--accent); font-weight: 600; }
+.model-selected td { background: var(--bg); }
+.model-city { min-height: 32px; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; }
+.model-city:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 900px) { .model-grid { grid-template-columns: minmax(0, 1fr); } }
+/* ===== end Model page ===== */
+
+/* Greek mode on the Model page: same gilt frame and display type as the other Greek cards */
+html[data-greek="true"] .model-card { outline: 1px solid rgba(232, 201, 122, .42); outline-offset: -7px; }
+html[data-greek="true"] .model-leads button, html[data-greek="true"] .model-table th { font-family: var(--display); font-weight: 600; letter-spacing: .12em; }
+html[data-greek="true"] .model-ours td { color: var(--accent); text-shadow: 0 0 10px rgba(232, 201, 122, .25); }
