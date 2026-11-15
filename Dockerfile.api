@@ -24,7 +24,12 @@ RUN pip install --no-cache-dir -r requirements.api.txt
 RUN useradd --create-home --uid 10001 app
 COPY --chown=app:app mcp_server.py markets.py news.py db_read.py world_data.py flights.py ships.py tides.py wx_scores.py ./
 COPY --chown=app:app api ./api
+COPY --chown=app:app voyage ./voyage
 COPY --from=web --chown=app:app /web/dist ./web/dist
+
+# Speed-model artifacts: a volume shared with the voyage-train job (Vultr Object Storage when configured).
+ENV VOYAGE_MODEL_DIR=/app/models/voyage
+RUN mkdir -p /app/models/voyage && chown -R app:app /app/models
 
 USER app
 EXPOSE 8000

@@ -34,6 +34,8 @@ services:
       NOSTOS_DB_CACHE: "1"  # last-good upstream responses in table api_cache (Open-Meteo rate limits)
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - voyage-models:/app/models
     stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
@@ -48,6 +50,24 @@ services:
       retries: 3
       start_period: 20s
 
+  # Voyage speed-model training: a one-shot job, not a server. On the Vultr instance, e.g. weekly cron:
+  #   docker compose --profile train run --rm voyage-train
+  # Publishes to Vultr Object Storage when VULTR_OBJECT_STORAGE_* is set (the API reloads it within
+  # an hour), and always to the shared volume.
+  voyage-train:
+    profiles: [train]
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:?set VITE_CLERK_PUBLISHABLE_KEY in .env}
+    command: ["python", "-m", "voyage.train"]
+    env_file: .env
+    volumes:
+      - voyage-models:/app/models
+    security_opt:
+      - no-new-privileges:true
+
   # Exposes api at PUBLIC_BASE_URL with no router port forwarding (works behind CGNAT).
   # Route in Cloudflare Zero Trust > Tunnels: trynostos.biz -> HTTP api:8000 (dashboard at /, MCP at /mcp)
   tunnel:
@@ -61,3 +81,6 @@ services:
       - api
     security_opt:
       - no-new-privileges:true
+
+volumes:
+  voyage-models:

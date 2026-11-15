@@ -52,28 +52,42 @@ const showWhenFacing = (el: HTMLElement, visible: boolean) => {
 }
 
 /* Greek-mode paths and rings. The accessors live at module level so globe.gl never re-digests them on hover. */
-type PathDatum = { kind: 'track' | 'voyage' | 'voyage-glow'; points: { lat: number; lon: number }[] }
+type PathDatum = { kind: 'track' | 'voyage' | 'voyage-glow' | 'route'; points: { lat: number; lon: number }[]; route?: RouteLine }
 const VOYAGE_POINTS = VOYAGE.map((p) => ({ lat: p.lat, lon: p.lng }))
 const VOYAGE_PATHS: PathDatum[] = [{ kind: 'voyage-glow', points: VOYAGE_POINTS }, { kind: 'voyage', points: VOYAGE_POINTS }]
 const pathPoints = (d: object) => (d as PathDatum).points
 const pathColor = (d: object) => {
-  const k = (d as PathDatum).kind
+  const { kind: k, route } = d as PathDatum
+  if (route) return route.color
   return k === 'track' ? SHIP : k === 'voyage-glow' ? 'rgba(232,201,122,0.22)' : ['rgba(246,220,142,0.45)', '#f6dc8e']
 }
-const pathStroke = (d: object) => ({ track: 2, voyage: 1.8, 'voyage-glow': 5 })[(d as PathDatum).kind]
-const pathDash = (d: object) => ((d as PathDatum).kind === 'voyage' ? 0.011 : 1)
-const pathGap = (d: object) => ((d as PathDatum).kind === 'voyage' ? 0.007 : 0)
-const pathAnimate = (d: object) => ((d as PathDatum).kind === 'voyage' ? 90000 : 0)
+// A planned route (voyage planner) carries its own look: dashed = shortest path, flow = animated toward the destination.
+const routeOf = (d: object) => (d as PathDatum).route
+const pathStroke = (d: object) => routeOf(d) ? routeOf(d)!.stroke ?? 2 : ({ track: 2, voyage: 1.8, 'voyage-glow': 5, route: 2 })[(d as PathDatum).kind]
+const pathDash = (d: object) => {
+  const r = routeOf(d)
+  return r ? (r.dashed ? 0.01 : r.flow ? 0.06 : 1) : (d as PathDatum).kind === 'voyage' ? 0.011 : 1
+}
+const pathGap = (d: object) => {
+  const r = routeOf(d)
+  return r ? (r.dashed ? 0.008 : r.flow ? 0.004 : 0) : (d as PathDatum).kind === 'voyage' ? 0.007 : 0
+}
+const pathAnimate = (d: object) => {
+  const r = routeOf(d)
+  return r ? (r.flow ? 24000 : 0) : (d as PathDatum).kind === 'voyage' ? 90000 : 0
+}
 
-type RingDatum = { kind: 'charybdis' | 'hearth'; lat: number; lng: number }
+type RingDatum = { kind: 'charybdis' | 'hearth' | 'vessel'; lat: number; lng: number } // vessel: the planner's ship
 const CHARYBDIS: RingDatum = { kind: 'charybdis', lat: 38.235, lng: 15.6 }
 const HEARTH: RingDatum = { kind: 'hearth', lat: 38.43, lng: 20.67 } // the fire kept burning on Ithaca
 const swirl = (t: number) => `rgba(170,225,235,${(Math.sin(Math.PI * t) * 0.85).toFixed(3)})`
 const glow = (t: number) => `rgba(246,220,142,${(1 - t).toFixed(3)})`
-const ringColor = (d: object) => ((d as RingDatum).kind === 'charybdis' ? swirl : glow)
-const ringRadius = (d: object) => ((d as RingDatum).kind === 'charybdis' ? 1.1 : 1.8)
-const ringSpeed = (d: object) => ((d as RingDatum).kind === 'charybdis' ? -0.75 : 0.9) // negative: the whirlpool pulls inward
-const ringPeriod = (d: object) => ((d as RingDatum).kind === 'charybdis' ? 450 : 1500)
+const amber = (t: number) => `rgba(255,199,122,${(1 - t).toFixed(3)})`
+const ringKind = (d: object) => (d as RingDatum).kind
+const ringColor = (d: object) => ({ charybdis: swirl, hearth: glow, vessel: amber })[ringKind(d)]
+const ringRadius = (d: object) => ({ charybdis: 1.1, hearth: 1.8, vessel: 2.2 })[ringKind(d)]
+const ringSpeed = (d: object) => ({ charybdis: -0.75, hearth: 0.9, vessel: 2.5 })[ringKind(d)] // negative: the whirlpool pulls inward
+const ringPeriod = (d: object) => ({ charybdis: 450, hearth: 1500, vessel: 700 })[ringKind(d)]
 
 const ODYSSEUS_STYLE: LayerStyle = { texture: blackShipTexture, iconPx: 30, alt: 0.009 }
 const GREEK_HOME = { lat: 36, lng: 17, altitude: 1.45 } // the Greek world, from Gibraltar to Colchis
@@ -150,7 +164,13 @@ type Props = {
   showVoyage?: boolean // Greek mode: Odysseus' route home
   onLore?: (entry: LoreEntry) => void
   lore?: LoreEntry | null // the open legend: the globe flies to it and keeps its marker on top
+  routes?: RouteLine[] // planned voyages
+  stops?: { lat: number; lon: number; name: string }[] // labelled waypoints (ports, Odyssey episodes)
+  vessel?: { lat: number; lon: number } | null // the ship's position on the voyage timeline
+  onPick?: (lat: number, lon: number) => void // set: clicks pick a point instead of a country
 }
+
+export type RouteLine = { points: { lat: number; lon: number }[]; color: string | string[]; dashed?: boolean; stroke?: number; flow?: boolean }
 
 export type TrackPoint = { lat: number; lon: number }
 export type ShipDot = MovingShip
@@ -161,9 +181,11 @@ const NO_SHIPS: ShipDot[] = []
 const NO_PLANES: PlaneDot[] = []
 const NO_TRACK: TrackPoint[] = []
 const NO_TIDES: TideStation[] = []
+const NO_ROUTES: RouteLine[] = []
+const NO_STOPS: { lat: number; lon: number; name: string }[] = []
 const SHIP = '#ffc77a' // the Figma's ship amber
 
-export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, temperature = true, greekMode = false, tides = NO_TIDES, tideMotion = 1, onTide, onTideClock, showMonsters = true, showVoyage = true, onLore, lore = null }: Props) {
+export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, temperature = true, greekMode = false, tides = NO_TIDES, tideMotion = 1, onTide, onTideClock, showMonsters = true, showVoyage = true, onLore, lore = null, routes = NO_ROUTES, stops = NO_STOPS, vessel = null, onPick }: Props) {
   const globe = useRef<GlobeMethods | undefined>(undefined)
   const [box, { width, height }] = useSize()
   const [hover, setHover] = useState<Country | null>(null)
@@ -264,6 +286,28 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     globe.current?.pointOfView({ lat: lore.lat - 1.5, lng: lore.lng, altitude: lore.kind === 'monster' ? 0.95 : 0.8 }, 1400)
   }, [lore, ready, ambient])
 
+  // A new voyage: fly to fit the whole route (centre of its points on the sphere, zoomed to its spread).
+  const routeKey = routes.length ? routes.map((r) => `${r.points.length}:${r.points[0]?.lat},${r.points[0]?.lon}`).join('|') : ''
+  useEffect(() => {
+    if (!ready || ambient || !routeKey) return
+    const pts = routes.flatMap((r) => r.points)
+    const v = pts.reduce((acc, p) => {
+      const la = (p.lat * Math.PI) / 180
+      const lo = (p.lon * Math.PI) / 180
+      return [acc[0] + Math.cos(la) * Math.cos(lo), acc[1] + Math.cos(la) * Math.sin(lo), acc[2] + Math.sin(la)]
+    }, [0, 0, 0])
+    const n = Math.hypot(...v) || 1
+    const [x, y, z] = v.map((c) => c / n)
+    const spread = Math.max(...pts.map((p) => {
+      const la = (p.lat * Math.PI) / 180
+      const lo = (p.lon * Math.PI) / 180
+      return Math.acos(Math.min(1, Math.cos(la) * Math.cos(lo) * x + Math.cos(la) * Math.sin(lo) * y + Math.sin(la) * z))
+    }))
+    const altitude = Math.max(0.75, Math.min(2.6, spread * 3.2 + 0.35)) // ~0.9 for the Aegean, ~2 for an ocean
+    globe.current?.pointOfView({ lat: (Math.asin(z) * 180) / Math.PI, lng: (Math.atan2(y, x) * 180) / Math.PI, altitude }, 1200)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refit only when a different route arrives
+  }, [routeKey, ready, ambient])
+
   const greekEls = useRef(new Map<string, { d: GreekMarker; body: HTMLElement }>())
   const pip = useCallback((d: object) => {
     if (isGreekMarker(d)) {
@@ -357,11 +401,18 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   useEffect(() => {
     onCountryRef.current = onCountry
   })
+  const onPickRef = useRef(onPick)
+  useEffect(() => {
+    onPickRef.current = onPick
+  })
   const onClick = useCallback(
-    (d: object, _e: MouseEvent, at: { lat: number; lng: number }) =>
-      onCountryRef.current?.((d as Country).properties.name, at, (globe.current?.pointOfView().altitude ?? 9) <= DEEP_ALTITUDE),
+    (d: object, _e: MouseEvent, at: { lat: number; lng: number }) => {
+      if (onPickRef.current) return onPickRef.current(at.lat, at.lng)
+      onCountryRef.current?.((d as Country).properties.name, at, (globe.current?.pointOfView().altitude ?? 9) <= DEEP_ALTITUDE)
+    },
     [],
   )
+  const onGlobeClick = useCallback(({ lat, lng }: { lat: number; lng: number }) => onPickRef.current?.(lat, lng), [])
   // Greek mode has no country briefings, but hovering a land still names it in Greek.
   const hoverLand = !ambient && (!!onCountry || greekMode)
   const onShipRef = useRef(onShip)
@@ -507,13 +558,15 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   const paths = useMemo<PathDatum[]>(() => [
     ...(track.length > 1 ? [{ kind: 'track' as const, points: track }] : []),
     ...(greekMode && showVoyage ? VOYAGE_PATHS : []),
-  ], [track, greekMode, showVoyage])
-  const rings = useMemo<RingDatum[]>(() => greekMode
-    ? [...(showMonsters ? [CHARYBDIS] : []), ...(showVoyage ? [HEARTH] : [])]
-    : [], [greekMode, showMonsters, showVoyage])
+    ...routes.map((route) => ({ kind: 'route' as const, points: route.points, route })),
+  ], [track, greekMode, showVoyage, routes])
+  const rings = useMemo<RingDatum[]>(() => [
+    ...(greekMode ? [...(showMonsters ? [CHARYBDIS] : []), ...(showVoyage ? [HEARTH] : [])] : []),
+    ...(vessel ? [{ kind: 'vessel' as const, lat: vessel.lat, lng: vessel.lon }] : []),
+  ], [greekMode, showMonsters, showVoyage, vessel])
 
   return (
-    <div ref={box} className="earth" onClickCapture={ambient ? undefined : onShipClickCapture} onPointerMove={ambient ? undefined : onShipPointer}>
+    <div ref={box} className={`earth${onPick ? ' picking' : ''}`} onClickCapture={ambient || onPick ? undefined : onShipClickCapture} onPointerMove={ambient || onPick ? undefined : onShipPointer}>
       {ready && (
         <Globe
           ref={globe}
@@ -533,7 +586,7 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
           polygonsTransitionDuration={0}
           polygonLabel={hoverLand ? label : undefined}
           onPolygonHover={hoverLand ? onHover : undefined}
-          onPolygonClick={ambient || !onCountry ? undefined : onClick}
+          onPolygonClick={ambient || (!onCountry && !onPick) ? undefined : onClick}
           htmlElementsData={htmlData}
           htmlElement={pip}
           htmlAltitude={0.03}
@@ -555,6 +608,17 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
           ringPropagationSpeed={ringSpeed}
           ringRepeatPeriod={ringPeriod}
           ringAltitude={0.007}
+          labelsData={stops}
+          labelLat="lat"
+          labelLng="lon"
+          labelText="name"
+          labelSize={0.28}
+          labelDotRadius={0.16}
+          labelColor={() => (greekMode ? '#f6eddf' : '#e6ecee')}
+          labelAltitude={0.012}
+          labelResolution={2}
+          labelsTransitionDuration={0}
+          onGlobeClick={ambient ? undefined : onGlobeClick}
         />
       )}
       {shipTip && (
