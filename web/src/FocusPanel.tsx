@@ -3,7 +3,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 /**
  * Full-screen dashboard for one selection. World adds `.world.focused`, which shrinks the globe
  * into the top-left cell. The header card (title + `hero`) sits beside the globe, `aside` takes the
- * last column of that row, and `children` are the cards below, so everything is visible at once.
+ * last column of that row, and `children` are the cards below, in a grid of equal-size cells.
  */
 export default function FocusPanel({ label, kicker, title, hero, aside, onClose, children }: {
   label: string
@@ -29,14 +29,14 @@ export default function FocusPanel({ label, kicker, title, hero, aside, onClose,
         {hero}
       </div>
       {aside && <div className="card hero-aside">{aside}</div>}
-      {children}
+      {children && <div className="focus-cards">{children}</div>}
     </section>
   )
 }
 
-export function Card({ title, span = 1, children }: { title?: string; span?: 1 | 2 | 3 | 4; children: ReactNode }) {
+export function Card({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <section className={`card span-${span}`}>
+    <section className="card">
       {title && <h3 className="section-title">{title}</h3>}
       <div className="card-body">{children}</div>
     </section>

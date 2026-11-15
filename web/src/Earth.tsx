@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import Globe, { type GlobeMethods } from 'react-globe.gl'
-import { MeshPhongMaterial } from 'three'
+import { MeshPhongMaterial, Vector3 } from 'three'
 import { feature } from 'topojson-client'
 import atlas from 'world-atlas/countries-110m.json'
 import type { SignalEvent } from './events'
-import { CARGO_PLANE_STYLE, PLANE_STYLE, SHIP_STYLE, TRIREME_STYLE, ShipLayer, type MovingShip } from './shipLayer'
+import { medallionSvg } from './greek/art'
+import { blackShipTexture, greekOceanTexture, odysseusFix, SeaCreatureLayer } from './greek/globe'
+import { ANCIENT_LANDS, greekNumeral, isGreekMarker, MONSTERS, STATIONS, VOYAGE, type GreekMarker, type LoreEntry } from './greek/myth'
+import { CARGO_PLANE_STYLE, LONGSHIP_STYLE, PLANE_STYLE, SHIP_STYLE, TRIREME_STYLE, ShipLayer, type LayerStyle, type MovingShip } from './shipLayer'
 import { TideLayer, type TideStation } from './tideLayer'
 import { WeatherOverlay, weatherTexture, type MarineGrid, type WeatherGrid } from './weatherLayer'
 
@@ -16,7 +19,9 @@ const LAND = '#1a272d'
 const LINE = '#2d3d43'
 const ACCENT = '#7bf1b1'
 const OCEAN = new MeshPhongMaterial({ color: '#0e1820', specular: '#000000', shininess: 0 })
-const GREEK_PALETTE = { land: '#ded0bc', line: '#8ca1aa', accent: '#e8c97a', ocean: '#102f46', hover: '#c45c3e' }
+const DEEP_ALTITUDE = 0.55 // zoomed in this far, a click means a region rather than the whole country
+const GREEK_PALETTE = { land: '#e6d7bb', line: '#8b6d4c', accent: '#e8c97a', edge: '#a0432a', hover: '#c45c3e' }
+const HELLAS = '300' // Greece, gilded on the Greek-mode map
 const RENDERER = { antialias: true, alpha: true, powerPreference: 'high-performance' as const }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,8 +34,74 @@ function tint(hex: string, t: number, base = LAND) {
 }
 const noSides = () => 'rgba(0,0,0,0)'
 const showWhenFacing = (el: HTMLElement, visible: boolean) => {
+  if (el.classList.contains('gm')) {
+    // Greek markers fade by CSS, so the declutter pass can hide them too.
+    const v = String(visible)
+    if (el.dataset.facing !== v) el.dataset.facing = v
+    return
+  }
   el.style.opacity = visible ? '1' : '0'
   el.style.pointerEvents = visible ? 'auto' : 'none'
+}
+
+/* Greek-mode paths and rings. The accessors live at module level so globe.gl never re-digests them on hover. */
+type PathDatum = { kind: 'track' | 'voyage' | 'voyage-glow'; points: { lat: number; lon: number }[] }
+const VOYAGE_POINTS = VOYAGE.map((p) => ({ lat: p.lat, lon: p.lng }))
+const VOYAGE_PATHS: PathDatum[] = [{ kind: 'voyage-glow', points: VOYAGE_POINTS }, { kind: 'voyage', points: VOYAGE_POINTS }]
+const pathPoints = (d: object) => (d as PathDatum).points
+const pathColor = (d: object) => {
+  const k = (d as PathDatum).kind
+  return k === 'track' ? SHIP : k === 'voyage-glow' ? 'rgba(232,201,122,0.22)' : ['rgba(246,220,142,0.45)', '#f6dc8e']
+}
+const pathStroke = (d: object) => ({ track: 2, voyage: 1.8, 'voyage-glow': 5 })[(d as PathDatum).kind]
+const pathDash = (d: object) => ((d as PathDatum).kind === 'voyage' ? 0.011 : 1)
+const pathGap = (d: object) => ((d as PathDatum).kind === 'voyage' ? 0.007 : 0)
+const pathAnimate = (d: object) => ((d as PathDatum).kind === 'voyage' ? 90000 : 0)
+
+type RingDatum = { kind: 'charybdis' | 'hearth'; lat: number; lng: number }
+const CHARYBDIS: RingDatum = { kind: 'charybdis', lat: 38.235, lng: 15.6 }
+const HEARTH: RingDatum = { kind: 'hearth', lat: 38.43, lng: 20.67 } // the fire kept burning on Ithaca
+const swirl = (t: number) => `rgba(170,225,235,${(Math.sin(Math.PI * t) * 0.85).toFixed(3)})`
+const glow = (t: number) => `rgba(246,220,142,${(1 - t).toFixed(3)})`
+const ringColor = (d: object) => ((d as RingDatum).kind === 'charybdis' ? swirl : glow)
+const ringRadius = (d: object) => ((d as RingDatum).kind === 'charybdis' ? 1.1 : 1.8)
+const ringSpeed = (d: object) => ((d as RingDatum).kind === 'charybdis' ? -0.75 : 0.9) // negative: the whirlpool pulls inward
+const ringPeriod = (d: object) => ((d as RingDatum).kind === 'charybdis' ? 450 : 1500)
+
+const ODYSSEUS_STYLE: LayerStyle = { texture: blackShipTexture, iconPx: 30, alt: 0.009 }
+const GREEK_HOME = { lat: 36, lng: 17, altitude: 1.45 } // the Greek world, from Gibraltar to Colchis
+const HOME = { lat: 37, lng: -97, altitude: 1.6 }
+
+const rankOf = (d: GreekMarker, active: string | null) =>
+  `${d.kind}:${d.id}` === active ? -1 : d.kind === 'monster' ? d.rank : d.id === 'ithaca' ? 0 : 4
+
+/** A monster roundel or a voyage stop, built once per marker and toggled by class afterwards. */
+function greekElement(d: GreekMarker, interactive: boolean, onPick: (d: GreekMarker) => void) {
+  const el = document.createElement('div')
+  el.className = `gm gm-${d.kind}${d.kind === 'station' && d.id === 'ithaca' ? ' gm-home' : ''}`
+  const body = document.createElement(interactive ? 'button' : 'span')
+  body.className = 'gm-body'
+  if (interactive) {
+    const b = body as HTMLButtonElement
+    b.type = 'button'
+    b.setAttribute('aria-label', d.kind === 'monster'
+      ? `${d.name}, ${d.epithet}. Read the legend`
+      : `Odyssey stop ${d.n} of ${STATIONS.length}: ${d.name}. Read the episode`)
+    // Keep the press off the globe underneath, so it doesn't also count as a click on the map.
+    b.addEventListener('pointerdown', (e) => e.stopPropagation())
+    b.addEventListener('pointerup', (e) => e.stopPropagation())
+    b.onclick = (e) => {
+      e.stopPropagation()
+      onPick(d)
+    }
+  }
+  // All text here comes from the static myth tables, never from the API.
+  body.innerHTML = d.kind === 'monster'
+    ? `<span class="gm-halo"></span><span class="gm-art" style="animation-delay:-${((d.lat * 7.3) % 5).toFixed(2)}s">${medallionSvg(d.id)}</span>`
+      + `<span class="gm-label"><b>${d.name}</b><i lang="grc">${d.greek}</i></span>`
+    : `<span class="gm-dot"></span><span class="gm-label"><b><span lang="grc">${greekNumeral(d.n)}</span> ${d.name}</b><i lang="grc">${d.greek}</i></span>`
+  el.append(body)
+  return el
 }
 
 function useSize() {
@@ -50,7 +121,7 @@ type Props = {
   events?: SignalEvent[]
   selected?: SignalEvent | null
   onSelect?: (e: SignalEvent) => void
-  onCountry?: (name: string, at?: { lat: number; lng: number }) => void
+  onCountry?: (name: string, at?: { lat: number; lng: number }, deep?: boolean) => void
   ships?: ShipDot[]
   onShip?: (mmsi: number) => void
   planes?: PlaneDot[]
@@ -62,11 +133,16 @@ type Props = {
   weather?: WeatherGrid | null
   marine?: MarineGrid | null
   windAndSurf?: boolean
+  temperature?: boolean // paint the temperature/rain texture; off for Wind & Surf so the motion reads
   greekMode?: boolean
   tides?: TideStation[] // NOAA tide gauges; empty hides the layer
   tideMotion?: number // tide clock multiplier; 1 = live
   onTide?: (id: string) => void
   onTideClock?: (ms: number) => void // the tide clock, a few times a second in time-lapse
+  showMonsters?: boolean // Greek mode: the bestiary and the sea creatures
+  showVoyage?: boolean // Greek mode: Odysseus' route home
+  onLore?: (entry: LoreEntry) => void
+  lore?: LoreEntry | null // the open legend: the globe flies to it and keeps its marker on top
 }
 
 export type TrackPoint = { lat: number; lon: number }
@@ -80,23 +156,30 @@ const NO_TRACK: TrackPoint[] = []
 const NO_TIDES: TideStation[] = []
 const SHIP = '#ffc77a' // the Figma's ship amber
 
-export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, greekMode = false, tides = NO_TIDES, tideMotion = 1, onTide, onTideClock }: Props) {
+export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, temperature = true, greekMode = false, tides = NO_TIDES, tideMotion = 1, onTide, onTideClock, showMonsters = true, showVoyage = true, onLore, lore = null }: Props) {
   const globe = useRef<GlobeMethods | undefined>(undefined)
   const [box, { width, height }] = useSize()
   const [hover, setHover] = useState<Country | null>(null)
-  const texture = useMemo(() => weather ? weatherTexture(weather) : null, [weather])
+  // The temperature/rain texture only under the Weather layer, and never in Greek mode, which is sea-only:
+  // its Wind & Surf overlay still uses `weather`, but the land temperature texture is skipped.
+  const texture = useMemo(() => weather && temperature && !greekMode ? weatherTexture(weather) : null, [weather, temperature, greekMode])
+  // In its place, the wine-dark sea: an old-chart ocean with waves, a gilt graticule and the seas' Greek names.
+  const greekOcean = useMemo(() => greekMode ? greekOceanTexture() : null, [greekMode])
+  useEffect(() => () => greekOcean?.dispose(), [greekOcean])
   const mapMaterial = useMemo(() => texture
     ? new MeshPhongMaterial({ color: '#ffffff', map: texture, specular: '#000000', shininess: 0 })
-    : greekMode ? new MeshPhongMaterial({ color: GREEK_PALETTE.ocean, specular: '#000000', shininess: 0 }) : OCEAN,
-    [texture, greekMode])
+    : greekOcean ? new MeshPhongMaterial({ color: '#ffffff', map: greekOcean, specular: '#24465e', shininess: 7 }) : OCEAN,
+    [texture, greekOcean])
   const land = greekMode ? GREEK_PALETTE.land : LAND
   const line = greekMode ? GREEK_PALETTE.line : LINE
   const accent = greekMode ? GREEK_PALETTE.accent : ACCENT
+  const edge = greekMode ? GREEK_PALETTE.edge : ACCENT
   const cap = useMemo(() => ({
     base: land,
     signal: tint(accent, 0.08, land),
     hover: tint(greekMode ? GREEK_PALETTE.hover : '#3d5560', 0.3, land),
     signalHover: tint(accent, 0.2, land),
+    hellas: tint('#d9a93f', 0.42, land),
   }), [land, accent, greekMode])
   const weatherCaps = useMemo(() => new MeshPhongMaterial({
     color: land,
@@ -114,6 +197,10 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   useEffect(() => {
     onSelectRef.current = onSelect
   })
+  const onLoreRef = useRef(onLore)
+  useEffect(() => {
+    onLoreRef.current = onLore
+  })
 
   const counts = useMemo(() => {
     const m = new Map<string, number>()
@@ -130,18 +217,43 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     controls.autoRotate = ambient && !matchMedia('(prefers-reduced-motion: reduce)').matches
     controls.autoRotateSpeed = 0.35
     controls.enabled = !ambient
-    g.pointOfView(ambient ? { lat: 30, lng: 140, altitude: 1.6 } : { lat: 37, lng: -97, altitude: 1.6 })
+    controls.minDistance = 101 // globe radius is 100: let users zoom down to regional level
+    g.pointOfView(ambient ? (greekMode ? { lat: 30, lng: 24, altitude: 1.6 } : { lat: 30, lng: 140, altitude: 1.6 }) : greekMode ? GREEK_HOME : HOME)
+    // greekMode only picks the opening view; the effect below flies between the two homes afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ambient, ready])
 
-  // Corner view: centre on the selection, pulled back so its surroundings fit the small box; back to the US view when cleared.
+  // Corner view: centre on the selection, pulled back so its surroundings fit the small box; back home when cleared.
   const focusKey = focusAt ? `${focusAt.lat.toFixed(2)},${focusAt.lng.toFixed(2)}` : ''
   useEffect(() => {
     if (!ready || ambient) return
-    const [lat, lng] = focusKey ? focusKey.split(',').map(Number) : [37, -97]
-    globe.current?.pointOfView({ lat, lng, altitude: focusKey ? 2.2 : 1.6 }, 800)
-  }, [focusKey, ready, ambient])
+    if (!focusKey) {
+      globe.current?.pointOfView(greekMode ? GREEK_HOME : HOME, 800)
+      return
+    }
+    const [lat, lng] = focusKey.split(',').map(Number)
+    const now = globe.current?.pointOfView().altitude ?? 2.2
+    globe.current?.pointOfView({ lat, lng, altitude: now <= DEEP_ALTITUDE ? now : 2.2 }, 800) // keep a deep zoom
+  }, [focusKey, ready, ambient, greekMode])
 
+  // Opening a legend flies the globe to its creature or stop.
+  const loreKey = lore ? `${lore.kind}:${lore.id}` : null
+  const loreRef = useRef(loreKey)
+  useEffect(() => {
+    loreRef.current = loreKey
+  }, [loreKey])
+  useEffect(() => {
+    if (!ready || ambient || !lore) return
+    globe.current?.pointOfView({ lat: lore.lat - 1.5, lng: lore.lng, altitude: lore.kind === 'monster' ? 0.95 : 0.8 }, 1400)
+  }, [lore, ready, ambient])
+
+  const greekEls = useRef(new Map<string, { d: GreekMarker; body: HTMLElement }>())
   const pip = useCallback((d: object) => {
+    if (isGreekMarker(d)) {
+      const el = greekElement(d, !ambient, (m) => onLoreRef.current?.(m))
+      greekEls.current.set(`${d.kind}:${d.id}`, { d, body: el.firstElementChild as HTMLElement })
+      return el
+    }
     const e = d as SignalEvent
     const el = document.createElement('button')
     el.className = `pip ${e.trend}${e.commodity ? ' commodity' : ''}`
@@ -150,7 +262,50 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     el.lastElementChild!.textContent = `${e.kicker} ${e.value}` // textContent: names come from the database
     el.onclick = () => onSelectRef.current?.(e)
     return el
-  }, [])
+  }, [ambient])
+
+  const greekMarkers = useMemo<GreekMarker[]>(() => greekMode
+    ? [...(showMonsters ? MONSTERS : []), ...(showVoyage ? STATIONS : [])]
+    : [], [greekMode, showMonsters, showVoyage])
+  const htmlData = useMemo(() => [...events, ...greekMarkers], [events, greekMarkers])
+  useEffect(() => {
+    const keep = new Set(greekMarkers.map((d) => `${d.kind}:${d.id}`))
+    for (const key of greekEls.current.keys()) if (!keep.has(key)) greekEls.current.delete(key)
+  }, [greekMarkers])
+
+  // Declutter: from the most famous down, a marker that would overlap one already shown waits until you zoom in.
+  useEffect(() => {
+    const host = box.current
+    if (!ready || !greekMode || !host) return
+    const v = new Vector3()
+    const toCam = new Vector3()
+    const id = window.setInterval(() => {
+      const g = globe.current
+      if (!g) return
+      const alt = g.pointOfView().altitude
+      const scale = Math.max(0.72, Math.min(1.25, 1.32 - 0.3 * alt))
+      host.style.setProperty('--gm-scale', scale.toFixed(3))
+      const near = String(alt < 0.62)
+      if (host.dataset.near !== near) host.dataset.near = near
+      const cam = g.camera().position
+      const placed: [number, number, number][] = []
+      const active = loreRef.current
+      const items = [...greekEls.current.values()].sort((a, b) => rankOf(a.d, active) - rankOf(b.d, active))
+      for (const { d, body } of items) {
+        const p = g.getCoords(d.lat, d.lng, 0)
+        v.set(p.x, p.y, p.z)
+        if (v.dot(toCam.copy(cam).sub(v)) <= 0) continue // far side: the facing check already hides it
+        const s = g.getScreenCoords(d.lat, d.lng, 0.03)
+        const r = (d.kind === 'monster' ? 22 : 8) * scale
+        const crowded = placed.some(([x, y, rr]) => (x - s.x) ** 2 + (y - s.y) ** 2 < (rr + r) ** 2)
+        if (crowded !== body.classList.contains('crowded')) body.classList.toggle('crowded', crowded)
+        const isActive = `${d.kind}:${d.id}` === active
+        if (isActive !== body.classList.contains('active')) body.classList.toggle('active', isActive)
+        if (!crowded) placed.push([s.x, s.y, r])
+      }
+    }, 140)
+    return () => clearInterval(id)
+  }, [ready, greekMode, box])
 
   // Stable accessors: globe.gl re-walks every polygon whenever one of these changes identity.
   const capColor = useCallback(
@@ -158,24 +313,26 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
       const c = d as Country
       const signal = counts.has(c.id)
       if (c === hover) return signal ? cap.signalHover : cap.hover
+      if (greekMode && c.id === HELLAS) return cap.hellas
       return signal ? cap.signal : cap.base
     },
-    [counts, hover, cap],
+    [counts, hover, cap, greekMode],
   )
   const strokeColor = useCallback(
-    (d: object) => (d === hover || (d as Country).id === selected?.country ? accent : line),
-    [hover, selected, accent, line],
+    (d: object) => (d === hover || (d as Country).id === selected?.country ? edge : line),
+    [hover, selected, edge, line],
   )
   const label = useCallback(
     (d: object) => {
       const c = d as Country
       const n = counts.get(c.id) ?? 0
+      const ancient = greekMode ? ANCIENT_LANDS[c.id] : undefined
       const el = document.createElement('div')
       el.className = 'tag'
-      el.textContent = `${c.properties.name}${n ? ` · ${n} signal${n > 1 ? 's' : ''}` : ''}`
+      el.textContent = `${c.properties.name}${ancient ? ` · ${ancient}` : ''}${n ? ` · ${n} signal${n > 1 ? 's' : ''}` : ''}`
       return el.outerHTML
     },
-    [counts],
+    [counts, greekMode],
   )
   const onHover = useCallback((d: object | null) => setHover(d as Country | null), [])
   const onCountryRef = useRef(onCountry)
@@ -183,9 +340,12 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     onCountryRef.current = onCountry
   })
   const onClick = useCallback(
-    (d: object, _e: MouseEvent, at: { lat: number; lng: number }) => onCountryRef.current?.((d as Country).properties.name, at),
+    (d: object, _e: MouseEvent, at: { lat: number; lng: number }) =>
+      onCountryRef.current?.((d as Country).properties.name, at, (globe.current?.pointOfView().altitude ?? 9) <= DEEP_ALTITUDE),
     [],
   )
+  // Greek mode has no country briefings, but hovering a land still names it in Greek.
+  const hoverLand = !ambient && (!!onCountry || greekMode)
   const onShipRef = useRef(onShip)
   useEffect(() => {
     onShipRef.current = onShip
@@ -194,18 +354,28 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   useEffect(() => {
     onPlaneRef.current = onPlane
   })
-  const shipLayer = useRef<ShipLayer | null>(null)
+  // Live AIS ships. Greek mode draws two layers: tankers sail as longships, every other vessel as a trireme.
+  const shipLayers = useRef<ShipLayer[]>([])
   const [shipTip, setShipTip] = useState<{ x: number; y: number; text: string } | null>(null)
   useEffect(() => {
     const g = globe.current
     if (!g || !ready || ambient) return
-    shipLayer.current = new ShipLayer(g, greekMode ? TRIREME_STYLE : SHIP_STYLE)
+    shipLayers.current = greekMode
+      ? [new ShipLayer(g, TRIREME_STYLE), new ShipLayer(g, LONGSHIP_STYLE)]
+      : [new ShipLayer(g, SHIP_STYLE)]
     return () => {
-      shipLayer.current?.dispose()
-      shipLayer.current = null
+      shipLayers.current.forEach((l) => l.dispose())
+      shipLayers.current = []
     }
   }, [ready, ambient, greekMode])
-  useEffect(() => shipLayer.current?.setShips(ships), [ships, ready, greekMode])
+  useEffect(() => {
+    const [main, tankers] = shipLayers.current
+    if (tankers) {
+      main.setShips(ships.filter((s) => s.category !== 'tanker'))
+      tankers.setShips(ships.filter((s) => s.category === 'tanker'))
+    } else main?.setShips(ships)
+  }, [ships, ready, greekMode])
+  const pickShipAt = (x: number, y: number) => shipLayers.current.map((l) => l.pick(x, y)).find(Boolean) ?? null
   const onTideRef = useRef(onTide)
   const onTideClockRef = useRef(onTideClock)
   useEffect(() => {
@@ -242,20 +412,47 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     passenger?.setShips(planes.filter((p) => !p.cargo))
     cargo?.setShips(planes.filter((p) => p.cargo))
   }, [planes, ready])
-  useEffect(() => shipLayer.current?.setMotion(motion), [motion, ready, greekMode])
+  useEffect(() => shipLayers.current.forEach((l) => l.setMotion(motion)), [motion, ready, greekMode])
   useEffect(() => {
     const g = globe.current
     if (!g || !ready || ambient || !windAndSurf || !weather || !marine) return
     const overlay = new WeatherOverlay(g, weather, marine)
     return () => overlay.dispose()
   }, [ready, ambient, windAndSurf, weather, marine])
+
+  // Greek mode: ketea and hippocampi circling the open oceans.
+  useEffect(() => {
+    const g = globe.current
+    if (!g || !ready || !greekMode || !showMonsters) return
+    const layer = new SeaCreatureLayer(g)
+    return () => layer.dispose()
+  }, [ready, greekMode, showMonsters])
+  // Greek mode: Odysseus' black ship sails the route on a loop, Troy to Ithaca.
+  useEffect(() => {
+    const g = globe.current
+    if (!g || !ready || !greekMode || !showVoyage) return
+    const ship = new ShipLayer(g, ODYSSEUS_STYLE)
+    const t0 = performance.now()
+    const sail = () => {
+      const fix = odysseusFix((performance.now() - t0) / 1000)
+      if (fix) ship.setShips([fix])
+    }
+    sail()
+    const id = window.setInterval(sail, 400)
+    return () => {
+      clearInterval(id)
+      ship.dispose()
+    }
+  }, [ready, greekMode, showVoyage])
+
   const local = (e: { clientX: number; clientY: number; currentTarget: HTMLElement }) => {
     const r = e.currentTarget.getBoundingClientRect()
     return [e.clientX - r.left, e.clientY - r.top] as const
   }
-  // Ships and planes are drawn outside globe.gl, so their picking wins over the country underneath.
+  // Ships, planes and tide gauges are drawn outside globe.gl, so their picking wins over the country underneath.
   const onShipClickCapture = (e: ReactMouseEvent<HTMLDivElement>) => {
-    const hit = shipLayer.current?.pick(...local(e))
+    if ((e.target as HTMLElement).closest('.gm')) return // a monster or a voyage stop takes the click
+    const hit = pickShipAt(...local(e))
     if (hit) {
       e.stopPropagation()
       onShipRef.current?.(hit.mmsi)
@@ -275,7 +472,7 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   }
   const onShipPointer = (e: ReactPointerEvent<HTMLDivElement>) => {
     const [x, y] = local(e)
-    const hit = shipLayer.current?.pick(x, y)
+    const hit = pickShipAt(x, y)
     const plane = hit ? null : planeLayers.current.map((l) => l.pick(x, y)).find(Boolean)
     const tide = hit || plane ? null : tideLayer.current?.pick(x, y)
     e.currentTarget.style.cursor = hit || plane || tide ? 'pointer' : ''
@@ -289,7 +486,13 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     if (plane) return setShipTip({ x, y, text: `✈ ${plane.name ?? 'Unknown flight'} · ${plane.category}` })
     setShipTip(hit ? { x, y, text: `${hit.name ?? `MMSI ${hit.mmsi}`} · ${hit.category}${hit.speed_kn ? ` · ${hit.speed_kn} kn` : ''}` } : null)
   }
-  const trackPaths = useMemo(() => (track.length > 1 ? [track] : []), [track])
+  const paths = useMemo<PathDatum[]>(() => [
+    ...(track.length > 1 ? [{ kind: 'track' as const, points: track }] : []),
+    ...(greekMode && showVoyage ? VOYAGE_PATHS : []),
+  ], [track, greekMode, showVoyage])
+  const rings = useMemo<RingDatum[]>(() => greekMode
+    ? [...(showMonsters ? [CHARYBDIS] : []), ...(showVoyage ? [HEARTH] : [])]
+    : [], [greekMode, showMonsters, showVoyage])
 
   return (
     <div ref={box} className="earth" onClickCapture={ambient ? undefined : onShipClickCapture} onPointerMove={ambient ? undefined : onShipPointer}>
@@ -302,7 +505,7 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
           backgroundColor="rgba(0,0,0,0)"
           globeMaterial={mapMaterial}
           atmosphereColor={greekMode ? GREEK_PALETTE.accent : '#4a6670'}
-          atmosphereAltitude={0.08}
+          atmosphereAltitude={greekMode ? 0.13 : 0.08}
           polygonsData={COUNTRIES}
           polygonCapColor={capColor}
           polygonCapMaterial={texture ? weatherCapMaterial : undefined}
@@ -310,21 +513,30 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
           polygonStrokeColor={strokeColor}
           polygonAltitude={0.006}
           polygonsTransitionDuration={0}
-          polygonLabel={ambient ? undefined : label}
-          onPolygonHover={ambient ? undefined : onHover}
-          onPolygonClick={ambient ? undefined : onClick}
-          htmlElementsData={events}
+          polygonLabel={hoverLand ? label : undefined}
+          onPolygonHover={hoverLand ? onHover : undefined}
+          onPolygonClick={ambient || !onCountry ? undefined : onClick}
+          htmlElementsData={htmlData}
           htmlElement={pip}
           htmlAltitude={0.03}
           htmlElementVisibilityModifier={showWhenFacing}
-          pathsData={trackPaths}
-          pathPoints={(d: object) => d as TrackPoint[]}
+          pathsData={paths}
+          pathPoints={pathPoints}
           pathPointLat="lat"
           pathPointLng="lon"
           pathPointAlt={0.008}
-          pathColor={() => SHIP}
-          pathStroke={2}
+          pathColor={pathColor}
+          pathStroke={pathStroke}
+          pathDashLength={pathDash}
+          pathDashGap={pathGap}
+          pathDashAnimateTime={pathAnimate}
           pathTransitionDuration={0}
+          ringsData={rings}
+          ringColor={ringColor}
+          ringMaxRadius={ringRadius}
+          ringPropagationSpeed={ringSpeed}
+          ringRepeatPeriod={ringPeriod}
+          ringAltitude={0.007}
         />
       )}
       {shipTip && (

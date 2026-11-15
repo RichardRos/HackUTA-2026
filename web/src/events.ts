@@ -62,23 +62,40 @@ export type GlobalWeather = {
   wind_10m_mph: number | null
 }
 
-/** Natural Earth country names for countries represented by the global-city weather feed. */
+/** Natural Earth country names -> ISO code of the global-city weather feed (every country has a point). */
 export const GLOBAL_WEATHER_COUNTRY_CODES: Record<string, string> = {
-  'united arab emirates': 'AE', angola: 'AO', argentina: 'AR', austria: 'AT', australia: 'AU',
-  bangladesh: 'BD', belgium: 'BE', brazil: 'BR', canada: 'CA',
-  'dem. rep. congo': 'CD', 'democratic republic of the congo': 'CD',
-  switzerland: 'CH', chile: 'CL', china: 'CN', colombia: 'CO', cuba: 'CU', czechia: 'CZ',
-  germany: 'DE', denmark: 'DK', algeria: 'DZ', egypt: 'EG', spain: 'ES', ethiopia: 'ET',
-  finland: 'FI', france: 'FR', 'united kingdom': 'GB', ghana: 'GH', greece: 'GR',
-  'hong kong': 'HK', hungary: 'HU', indonesia: 'ID', ireland: 'IE', israel: 'IL', india: 'IN',
-  iraq: 'IQ', iran: 'IR', italy: 'IT', japan: 'JP', kenya: 'KE', 'south korea': 'KR',
-  kuwait: 'KW', kazakhstan: 'KZ', morocco: 'MA', mexico: 'MX', malaysia: 'MY', nigeria: 'NG',
-  netherlands: 'NL', norway: 'NO', 'new zealand': 'NZ', peru: 'PE', philippines: 'PH',
-  pakistan: 'PK', poland: 'PL', portugal: 'PT', qatar: 'QA', romania: 'RO', russia: 'RU',
-  'saudi arabia': 'SA', sweden: 'SE', singapore: 'SG', thailand: 'TH', turkey: 'TR',
-  taiwan: 'TW', ukraine: 'UA', uzbekistan: 'UZ', venezuela: 'VE', vietnam: 'VN',
-  'south africa': 'ZA', tanzania: 'TZ',
-  'united states of america': 'US', 'united states': 'US',
+  'united arab emirates': 'AE', 'afghanistan': 'AF', 'albania': 'AL', 'armenia': 'AM', 'angola': 'AO',
+  'antarctica': 'AQ', 'argentina': 'AR', 'austria': 'AT', 'australia': 'AU', 'azerbaijan': 'AZ',
+  'bosnia and herz.': 'BA', 'bangladesh': 'BD', 'belgium': 'BE', 'burkina faso': 'BF', 'bulgaria': 'BG',
+  'burundi': 'BI', 'benin': 'BJ', 'brunei': 'BN', 'bolivia': 'BO', 'brazil': 'BR', 'bahamas': 'BS',
+  'bhutan': 'BT', 'botswana': 'BW', 'belarus': 'BY', 'belize': 'BZ', 'canada': 'CA', 'dem. rep. congo': 'CD',
+  'democratic republic of the congo': 'CD', 'central african rep.': 'CF', 'congo': 'CG', 'switzerland': 'CH',
+  "côte d'ivoire": 'CI', 'chile': 'CL', 'cameroon': 'CM', 'china': 'CN', 'colombia': 'CO', 'costa rica': 'CR',
+  'cuba': 'CU', 'cyprus': 'CY', 'czechia': 'CZ', 'germany': 'DE', 'djibouti': 'DJ', 'denmark': 'DK',
+  'dominican rep.': 'DO', 'algeria': 'DZ', 'ecuador': 'EC', 'estonia': 'EE', 'egypt': 'EG', 'w. sahara': 'EH',
+  'eritrea': 'ER', 'spain': 'ES', 'ethiopia': 'ET', 'finland': 'FI', 'fiji': 'FJ', 'falkland is.': 'FK',
+  'france': 'FR', 'gabon': 'GA', 'united kingdom': 'GB', 'georgia': 'GE', 'ghana': 'GH', 'greenland': 'GL',
+  'gambia': 'GM', 'guinea': 'GN', 'eq. guinea': 'GQ', 'greece': 'GR', 'guatemala': 'GT', 'guinea-bissau': 'GW',
+  'guyana': 'GY', 'hong kong': 'HK', 'honduras': 'HN', 'croatia': 'HR', 'haiti': 'HT', 'hungary': 'HU',
+  'indonesia': 'ID', 'ireland': 'IE', 'israel': 'IL', 'india': 'IN', 'iraq': 'IQ', 'iran': 'IR',
+  'iceland': 'IS', 'italy': 'IT', 'jamaica': 'JM', 'jordan': 'JO', 'japan': 'JP', 'kenya': 'KE',
+  'kyrgyzstan': 'KG', 'cambodia': 'KH', 'north korea': 'KP', 'south korea': 'KR', 'kuwait': 'KW',
+  'kazakhstan': 'KZ', 'laos': 'LA', 'lebanon': 'LB', 'sri lanka': 'LK', 'liberia': 'LR', 'lesotho': 'LS',
+  'lithuania': 'LT', 'luxembourg': 'LU', 'latvia': 'LV', 'libya': 'LY', 'morocco': 'MA', 'moldova': 'MD',
+  'montenegro': 'ME', 'madagascar': 'MG', 'macedonia': 'MK', 'mali': 'ML', 'myanmar': 'MM', 'mongolia': 'MN',
+  'mauritania': 'MR', 'malawi': 'MW', 'mexico': 'MX', 'malaysia': 'MY', 'mozambique': 'MZ', 'namibia': 'NA',
+  'new caledonia': 'NC', 'niger': 'NE', 'nigeria': 'NG', 'nicaragua': 'NI', 'netherlands': 'NL',
+  'norway': 'NO', 'nepal': 'NP', 'new zealand': 'NZ', 'oman': 'OM', 'panama': 'PA', 'peru': 'PE',
+  'papua new guinea': 'PG', 'philippines': 'PH', 'pakistan': 'PK', 'poland': 'PL', 'puerto rico': 'PR',
+  'palestine': 'PS', 'portugal': 'PT', 'paraguay': 'PY', 'qatar': 'QA', 'romania': 'RO', 'serbia': 'RS',
+  'russia': 'RU', 'rwanda': 'RW', 'saudi arabia': 'SA', 'solomon is.': 'SB', 'sudan': 'SD', 'sweden': 'SE',
+  'singapore': 'SG', 'slovenia': 'SI', 'slovakia': 'SK', 'sierra leone': 'SL', 'senegal': 'SN',
+  'somalia': 'SO', 'suriname': 'SR', 's. sudan': 'SS', 'el salvador': 'SV', 'syria': 'SY', 'eswatini': 'SZ',
+  'chad': 'TD', 'fr. s. antarctic lands': 'TF', 'togo': 'TG', 'thailand': 'TH', 'tajikistan': 'TJ',
+  'timor-leste': 'TL', 'turkmenistan': 'TM', 'tunisia': 'TN', 'turkey': 'TR', 'trinidad and tobago': 'TT',
+  'taiwan': 'TW', 'tanzania': 'TZ', 'ukraine': 'UA', 'uganda': 'UG', 'united states of america': 'US',
+  'united states': 'US', 'uruguay': 'UY', 'uzbekistan': 'UZ', 'venezuela': 'VE', 'vietnam': 'VN',
+  'vanuatu': 'VU', 'yemen': 'YE', 'south africa': 'ZA', 'zambia': 'ZM', 'zimbabwe': 'ZW',
 }
 
 export function globalWeatherCountryCode(country: string): string | null {
@@ -94,6 +111,7 @@ const COUNTRY_IDS: Record<string, string> = {
   MA: '504', MX: '484', MY: '458', NG: '566', NL: '528', NO: '578', NZ: '554', PE: '604', PH: '608', PK: '586',
   PL: '616', PT: '620', QA: '634', RO: '642', RU: '643', SA: '682', SE: '752', SG: '702', TH: '764', TR: '792',
   TW: '158', UA: '804', US: '840', UZ: '860', VE: '862', VN: '704', ZA: '710', TZ: '834',
+  FJ: '242', EH: '732', PG: '598', SO: '706', SD: '729', TD: '148', HT: '332', DO: '214', BS: '044', FK: '238', GL: '304', TF: '260', TL: '626', LS: '426', UY: '858', BO: '068', PA: '591', CR: '188', NI: '558', HN: '340', SV: '222', GT: '320', BZ: '084', GY: '328', SR: '740', EC: '218', PR: '630', JM: '388', ZW: '716', BW: '072', NA: '516', SN: '686', ML: '466', MR: '478', BJ: '204', NE: '562', CM: '120', TG: '768', CI: '384', GN: '324', GW: '624', LR: '430', SL: '694', BF: '854', CF: '140', CG: '178', GA: '266', GQ: '226', ZM: '894', MW: '454', MZ: '508', SZ: '748', BI: '108', LB: '422', MG: '450', PS: '275', GM: '270', TN: '788', JO: '400', OM: '512', VU: '548', KH: '116', LA: '418', MM: '104', KP: '408', MN: '496', BT: '064', NP: '524', AF: '004', TJ: '762', KG: '417', TM: '795', SY: '760', AM: '051', BY: '112', MD: '498', LT: '440', LV: '428', EE: '233', BG: '100', AL: '008', HR: '191', LU: '442', NC: '540', SB: '090', LK: '144', IS: '352', AZ: '031', GE: '268', BN: '096', SI: '705', SK: '703', ER: '232', PY: '600', YE: '887', AQ: '010', CY: '196', LY: '434', DJ: '262', UG: '800', RW: '646', BA: '070', MK: '807', RS: '688', ME: '499', TT: '780', SS: '728'
 }
 
 const weatherTime = (value: string | null) => {

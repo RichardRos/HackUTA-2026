@@ -4,7 +4,7 @@ import { TideChart, type TidePoint } from './Charts'
 import FocusPanel, { Card } from './FocusPanel'
 import { tideAt, type TideStation } from './tideLayer'
 
-/** GET /api/tides/{id} (tides.py tide_station). Times UTC, heights metres above MLLW. */
+/** GET /api/tides/{id} (tides.py tide_station). Times UTC, heights metres above the station's datum. */
 type TideDetail = {
   station: Omit<TideStation, 'events'>
   predicted: TidePoint[]
@@ -17,6 +17,16 @@ const fmt = (iso: string) => {
   const d = new Date(iso)
   return `${d.toLocaleDateString([], { weekday: 'short', timeZone: 'UTC' })} ${iso.slice(11, 16)} UTC`
 }
+const KIND = {
+  gauge: 'NOAA live gauge',
+  harmonic: 'NOAA tide predictions',
+  model: 'Global tide model / Open-Meteo',
+} as const
+const DATUM = {
+  MLLW: 'Heights in metres above mean lower low water (MLLW), the chart datum. Times UTC.',
+  MSL: 'Heights in metres relative to mean sea level, from a global tide model (includes surge). Times UTC.',
+} as const
+
 const until = (iso: string, now: number) => {
   const min = Math.max(0, Math.round((Date.parse(iso) - now) / 60_000))
   return min < 60 ? `in ${min} min` : `in ${Math.floor(min / 60)} h ${min % 60} min`
@@ -54,7 +64,7 @@ export default function TidePanel({ station, onClose }: { station: TideStation; 
   return (
     <FocusPanel
       label={`Tides at ${where}`}
-      kicker={`Tide station ${station.id} / NOAA CO-OPS`}
+      kicker={station.kind === 'model' ? KIND.model : `Station ${station.id} / ${KIND[station.kind]}`}
       title={where}
       onClose={onClose}
       aside={
@@ -66,7 +76,7 @@ export default function TidePanel({ station, onClose }: { station: TideStation; 
           {state && <p className="muted">
             {state.flow < 0.2 ? 'Near slack water, turning soon.' : `${Math.abs(state.rate).toFixed(2)} m per hour, ${state.flow > 0.8 ? 'running hardest' : state.rising ? 'filling' : 'draining'}.`}
           </p>}
-          <p className="micro">Heights in metres above mean lower low water (MLLW). Times UTC.</p>
+          <p className="micro">{DATUM[station.datum]}</p>
         </>
       }
       hero={
@@ -79,21 +89,22 @@ export default function TidePanel({ station, onClose }: { station: TideStation; 
         </ul>
       }
     >
-      <Card title="Tide curve" span={4}>
+      <Card title="Tide curve">
         {error ? <p className="error" role="alert">{error}</p>
           : !detail ? <p className="muted">Loading tide curve…</p>
             : detail.predicted.length > 1
-              ? <TideChart predicted={detail.predicted} observed={detail.observed} events={detail.events} now={now} />
+              ? <TideChart predicted={detail.predicted} observed={detail.observed} events={detail.events} now={now} datum={station.datum} />
               : <p className="muted">NOAA has no predicted curve for this station right now.</p>}
       </Card>
-      <Card title="Station" span={2}>
+      <Card title="Station">
         <dl className="facts">
-          <div><dt>Tide type</dt><dd>{station.tide_type ?? '–'}</dd></div>
+          <div><dt>Source</dt><dd>{station.source}</dd></div>
+          {station.tide_type && <div><dt>Tide type</dt><dd>{station.tide_type}</dd></div>}
           <div><dt>Range, ±12 h</dt><dd>{range != null ? `${range.toFixed(2)} m` : '–'}</dd></div>
           <div><dt>Position</dt><dd>{station.lat.toFixed(3)}, {station.lon.toFixed(3)}</dd></div>
         </dl>
       </Card>
-      <Card title="Observed vs predicted" span={2}>
+      <Card title={station.kind === 'gauge' ? 'Observed vs predicted' : 'Live gauge'}>
         {surge != null && lastObs ? (
           <>
             <p className="big">{surge >= 0 ? '+' : ''}{surge.toFixed(2)} m</p>
@@ -104,7 +115,11 @@ export default function TidePanel({ station, onClose }: { station: TideStation; 
             </p>
             <p className="micro">Gauge reading {fmt(lastObs.t)}</p>
           </>
-        ) : <p className="muted">{detail?.observed_error ? `Gauge offline: ${detail.observed_error}` : detail ? 'No recent gauge reading.' : 'Loading…'}</p>}
+        ) : <p className="muted">{
+          station.kind === 'model' ? 'Modelled point: there is no tide gauge here, so the curve is the model alone.'
+            : station.kind === 'harmonic' ? 'Prediction-only NOAA station: no live gauge to compare against.'
+              : detail?.observed_error ? `Gauge offline: ${detail.observed_error}`
+                : detail ? 'No recent gauge reading.' : 'Loading…'}</p>}
       </Card>
     </FocusPanel>
   )

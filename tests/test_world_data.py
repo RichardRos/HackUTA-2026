@@ -45,3 +45,32 @@ class CommodityEtfTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalPlacesTest(unittest.TestCase):
+    def test_most_specific_first_ending_with_country(self):
+        self.assertEqual(world_data.local_places({"town": "Arles", "county": "Bouches", "state": "Provence", "country": "France"}),
+                         ["Arles", "Bouches", "Provence", "France"])
+        self.assertEqual(world_data.local_places({"city": "Singapore", "country": "Singapore"}), ["Singapore"])
+        self.assertEqual(world_data.local_places({}), [])
+
+
+class SovereignCurveTest(unittest.TestCase):
+    def setUp(self):
+        world_data._tv_yields.cache_clear()
+
+    def test_parses_tenors_month_ago_and_euro_fallback(self):
+        rows = [{"s": "TVC:DE10Y", "d": ["Germany 10 Year Government Bonds Yield", 3.3, 10.0]},
+                {"s": "TVC:DE03MY", "d": ["Germany 3 Month Government Bonds Yield", 2.0, None]},
+                {"s": "TVC:EU10Y", "d": ["Euro 10 Year Government Bonds Yield", 3.0, 0.0]}]
+        resp = type("R", (), {"raise_for_status": lambda self: None, "json": lambda self: {"data": rows}})()
+        with patch.object(world_data.httpx, "post", return_value=resp):
+            de = world_data.sovereign_curve("Germany")
+            ee = world_data.sovereign_curve("Estonia")
+        self.assertEqual([b["tenor"] for b in de["bonds"]], ["3 Mo", "10 Yr"])
+        self.assertEqual(de["bonds"][1]["month_ago"], 3.0)
+        self.assertEqual(de["bonds"][1]["change_1m_bp"], 30.0)
+        self.assertEqual(len(de["month_ago"]["curve"]), 1)  # no 1M change, no past point
+        self.assertIn("euro-area", ee["source"])
+        with self.assertRaises(ValueError):
+            world_data.sovereign_curve("Chad")

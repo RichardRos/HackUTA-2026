@@ -61,13 +61,13 @@ export default function PlanePanel({ hex, aircraft, onClose }: { hex: string; ai
         ) : <p className="muted">This flight is no longer in the latest global snapshot.</p>
       }
     >
-      {aircraft && (
-        <Card title="Aircraft" span={2}>
+      <Card title="Aircraft">
+        {aircraft ? (
           <dl className="facts">
             {facts.filter(([, x]) => value(x)).map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}
           </dl>
-        </Card>
-      )}
+        ) : <p className="muted">Not in the latest snapshot.</p>}
+      </Card>
     </FocusPanel>
   )
 }

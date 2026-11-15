@@ -6,6 +6,7 @@ The default window is the model team's held-out test period.
 """
 from __future__ import annotations
 
+import re
 from datetime import date
 
 from db_read import read_query
@@ -90,6 +91,38 @@ def city_map(start: date | None = None, end: date | None = None, lead_days: int 
         "AND f.climate_date BETWEEN %s AND %s AND f.error_f IS NOT NULL "
         "GROUP BY l.location ORDER BY l.location",
         (model, lead_days, start, end),
+    )
+
+
+# Thin readers over the model team's published views (fixed test period, lead 1 for cities).
+def _location(location: str) -> str:
+    if not re.fullmatch(r"[a-z_]{1,40}", location):
+        raise ValueError("location must be a lowercase key like 'austin'")
+    return location
+
+
+def leaderboard_test(lead_days: int | None = None) -> list[dict]:
+    _lead(lead_days)
+    return read_query(
+        "SELECT lead_days, model, role, days, mae_f, bias_f, within_2f_pct "
+        "FROM nostos_wx.leaderboard_test WHERE (%s::int IS NULL OR lead_days = %s) "
+        "ORDER BY lead_days, mae_f",
+        (lead_days, lead_days),
+    )
+
+
+def city_accuracy() -> list[dict]:
+    return read_query(
+        "SELECT location, station_id, latitude, longitude, days, nostos_mae_f, "
+        "nbm_corrected_mae_f, nbm_mae_f FROM nostos_wx.city_accuracy ORDER BY location"
+    )
+
+
+def city_timeline(location: str) -> list[dict]:
+    return read_query(
+        "SELECT climate_date, observed_f, nostos_f, nbm_corrected_f, nbm_f "
+        "FROM nostos_wx.city_timeline WHERE location = %s ORDER BY climate_date",
+        (_location(location),),
     )
 
 

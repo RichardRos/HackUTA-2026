@@ -46,6 +46,16 @@ class AssistantLoopTests(unittest.TestCase):
             out = asyncio.run(assistant.answer([Message(role="user", text="Where is the 10-year?")]))
         self.assertEqual(out, {"reply": "The 10-year is at 5.15%.", "tools_used": ["get_treasury_curve"]})
 
+    def test_view_context_reaches_system_prompt(self):
+        fake = FakeGemini()
+        with (
+            patch.dict(os.environ, {"GEMINI_API_KEY": "k"}),
+            patch.object(assistant.httpx, "AsyncClient", lambda *a, **kw: fake),
+            patch.object(world_data, "treasury_curve", return_value=CURVE),
+        ):
+            asyncio.run(assistant.answer([Message(role="user", text="What about this?")], "Ship panel: MMSI 123"))
+        self.assertIn("Ship panel: MMSI 123", fake.requests[0]["systemInstruction"]["parts"][0]["text"])
+
     def test_rate_limit(self):
         assistant._calls.clear()
         for _ in range(assistant.PER_MINUTE):

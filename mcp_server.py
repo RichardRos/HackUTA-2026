@@ -816,6 +816,21 @@ def get_news(
 
 
 @mcp.tool(annotations=ReadOnly)
+def get_local_news(
+    lat: Annotated[float, Field(ge=-90, le=90)],
+    lon: Annotated[float, Field(ge=-180, le=180)],
+) -> dict:
+    """WSJ/FT stories for a point: town, then each broader place up to the country; when every level
+    is empty, circle back to the town with a wider time window, until something is found."""
+    places = world_data.local_places(world_data.reverse_geocode(lat, lon))
+    for hours in (336, 2160, 8760):  # 14 days, 90 days, a year
+        for place in places:
+            if news := get_news(q=place, hours=hours, limit=12):
+                return {"region": place, "news": news, "hours": hours}
+    return {"region": places[0] if places else None, "news": [], "hours": 8760}
+
+
+@mcp.tool(annotations=ReadOnly)
 def get_region_signals(limit: Annotated[int, Field(ge=1, le=100)] = 12) -> list[dict]:
     """Regions whose actual demand ran furthest above or below EIA's day-ahead forecast over the
     24 hours before the latest actual, with each region's mean weather-point coordinates."""
@@ -1002,16 +1017,17 @@ def get_marine_grid() -> dict:
 
 @mcp.tool(annotations=ExternalReadOnly)
 def get_tides() -> dict:
-    """Every NOAA CO-OPS tidal station in the US with predicted highs and lows (UTC, metres above
-    MLLW) from yesterday through two days ahead, and each station's level, direction and next
-    turn right now. Source: NOAA Tides & Currents."""
+    """Tide stations worldwide with predicted highs and lows (UTC, metres; each station's `datum`
+    is MLLW for NOAA or MSL for the global model) from yesterday through two days ahead, and each
+    station's level, direction and next turn right now. Sources: NOAA Tides & Currents (US
+    gauges and harmonic stations) and Open-Meteo Marine's global tide model elsewhere."""
     return tides.tide_overview()
 
 
 @mcp.tool(annotations=ExternalReadOnly)
-def get_tide_station(station_id: Annotated[str, Field(pattern=r"^\d{7}$")]) -> dict:
-    """One NOAA tide station: 15-minute predicted curve and observed water level from 24 h ago to
-    48 h ahead, plus high/low turns. Station ids come from get_tides."""
+def get_tide_station(station_id: Annotated[str, Field(pattern=tides.STATION_ID)]) -> dict:
+    """One tide station: predicted curve, observed water level (NOAA gauges only) and high/low
+    turns from 24 h ago to 48 h ahead. Station ids come from get_tides."""
     return tides.tide_station(station_id)
 
 
@@ -1036,6 +1052,10 @@ def _rundown(country: str) -> dict:
         "markets": lambda: _country_markets(country),
         "filings": lambda: world_data.edgar_filings(country),
     }
+    if world_data.has_sovereign_yields(country):
+        jobs["bonds"] = lambda: world_data.sovereign_curve(country)["bonds"]
+        if not us:
+            jobs["treasury_curve"] = lambda: world_data.sovereign_curve(country)
     if us:
         jobs |= {
             "treasury_curve": world_data.treasury_curve,
@@ -1049,9 +1069,18 @@ def _rundown(country: str) -> dict:
 
 
 @mcp.tool(annotations=ExternalReadOnly)
+def get_sovereign_curve(country: Country) -> dict:
+    """A country's government bond yields: every tenor's yield now, about a month ago and the change
+    in basis points, as a curve. Covers about 50 countries; euro members without their own bonds get
+    the euro-area curve. Countries use Natural Earth names."""
+    return world_data.sovereign_curve(country)
+
+
+@mcp.tool(annotations=ExternalReadOnly)
 def get_country_rundown(country: Country) -> dict:
-    """One country's news (last 14 days), prediction markets and SEC filings; for the United States
-    also the Treasury yield curve, Treasury ETF trend and US grid demand signals. Each part returns
+    """One country's news (last 14 days), prediction markets and SEC filings; government bond yields
+    and yield curve where covered (about 50 countries); for the United States also the official
+    Treasury par curve, Treasury ETF trend and US grid demand signals. Each part returns
     {"error": ...} on its own if its source is down. Countries use Natural Earth names."""
     return _rundown(country)
 

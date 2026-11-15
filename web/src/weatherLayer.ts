@@ -3,13 +3,13 @@ import {
   BufferGeometry,
   CanvasTexture,
   Color,
-  LineSegments,
   Points,
   ShaderMaterial,
   SRGBColorSpace,
   Vector3,
 } from 'three'
 import type { GlobeMethods } from 'react-globe.gl'
+import { WindFlow } from './windFlow'
 
 export type WeatherGrid = {
   lats: number[]
@@ -123,43 +123,6 @@ export function weatherTexture(grid: WeatherGrid) {
   return texture
 }
 
-// Wind: every streak carries its speed (m/s). Faster wind -> longer streaks that travel farther and
-// cycle faster, brighter colour (teal -> white -> storm amber) and a lateral gust wobble above ~8 m/s.
-const windVertex = /* glsl */ `
-  attribute float phase;
-  attribute float flow;
-  attribute float speed;
-  attribute vec3 advect;
-  uniform float uTime;
-  uniform float uAnimate;
-  varying float vPulse;
-  varying float vFade;
-  varying float vSpeed;
-  void main() {
-    float cycle = fract(uTime * flow * 0.12 + phase);
-    vec3 moved = position + advect * ((cycle - 0.5) * uAnimate);
-    float gust = smoothstep(8.0, 25.0, speed);
-    vec3 side = normalize(cross(advect, position));
-    moved += side * sin(uTime * (2.0 + flow * 2.5) + phase * 40.0) * gust * 0.35 * uAnimate;
-    vFade = mix(1.0, smoothstep(0.0, 0.14, cycle) * (1.0 - smoothstep(0.86, 1.0, cycle)), uAnimate);
-    vPulse = 0.72 + 0.28 * (0.5 + 0.5 * sin(uTime * flow * (1.0 + gust * 2.0) + phase * 6.28318));
-    vSpeed = speed;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(moved, 1.0);
-  }`
-const windFragment = /* glsl */ `
-  varying float vPulse;
-  varying float vFade;
-  varying float vSpeed;
-  void main() {
-    vec3 calm = vec3(0.36, 0.66, 0.78);
-    vec3 fresh = vec3(0.86, 0.96, 1.0);
-    vec3 storm = vec3(1.0, 0.64, 0.36);
-    vec3 color = mix(calm, fresh, smoothstep(2.0, 12.0, vSpeed));
-    color = mix(color, storm, smoothstep(15.0, 25.0, vSpeed));
-    float strength = 0.35 + 0.6 * smoothstep(1.0, 15.0, vSpeed);
-    gl_FragColor = vec4(color, vPulse * vFade * strength);
-  }`
-
 // Waves: each marine point bobs along its travel direction on a cycle set by the wave period, with
 // amplitude, dot size and ripple rings scaled by significant wave height. High seas (>~3 m) add a
 // second ring and shift the colour from teal toward orange.
@@ -206,13 +169,11 @@ const waveFragment = /* glsl */ `
     gl_FragColor = vec4(mix(color, vec3(0.9, 0.98, 1.0), rings * (1.0 - core) * 0.3), alpha);
   }`
 
-/** Wind streaks advect along local vectors scaled by speed; wave points swell and ripple with height and period. */
+/** Wind as a swirling particle flow scaled by speed; wave points swell and ripple with height and period. */
 export class WeatherOverlay {
-  private readonly wind: LineSegments
+  private readonly flow: WindFlow
   private readonly waves: Points
-  private readonly windGeometry: BufferGeometry
   private readonly waveGeometry: BufferGeometry
-  private readonly windMaterial: ShaderMaterial
   private readonly waveMaterial: ShaderMaterial
   private readonly globe: GlobeMethods
   private frame = 0
@@ -222,7 +183,6 @@ export class WeatherOverlay {
   private disposed = false
   private readonly motionChange = (event: MediaQueryListEvent) => {
     this.reducedMotion = event.matches
-    this.windMaterial.uniforms.uAnimate.value = this.reducedMotion ? 0 : 1
     this.waveMaterial.uniforms.uAnimate.value = this.reducedMotion ? 0 : 1
     if (this.reducedMotion) {
       cancelAnimationFrame(this.frame)
@@ -233,51 +193,10 @@ export class WeatherOverlay {
 
   constructor(globe: GlobeMethods, weather: WeatherGrid, marine: MarineGrid) {
     this.globe = globe
-    this.windGeometry = new BufferGeometry()
-    const positions: number[] = []
-    const phases: number[] = []
-    const flows: number[] = []
-    const advections: number[] = []
-    const speeds: number[] = []
-    weather.lats.forEach((lat, row) => weather.lons.forEach((lon, col) => {
-      const i = row * weather.lons.length + col
-      const u = weather.wind_u[i]
-      const v = weather.wind_v[i]
-      if (!finite(lat) || !finite(lon) || !finite(u) || !finite(v) || Math.hypot(u, v) < 0.2) return
-      const magnitude = Math.hypot(u, v)
-      const speed = finite(weather.wind_ms[i]) ? weather.wind_ms[i]! : magnitude
-      // Streak length (degrees) grows with speed: ~0.6 deg in light air, ~3 deg in a gale.
-      const length = 0.5 + Math.min(2.5, speed * 0.12)
-      const dlat = (v / magnitude) * length
-      const dlon = (u / magnitude) * length / Math.max(0.25, Math.cos(lat * Math.PI / 180))
-      const a = globe.getCoords(lat - dlat / 2, lon - dlon / 2, 0.018)
-      const b = globe.getCoords(lat + dlat / 2, lon + dlon / 2, 0.018)
-      positions.push(a.x, a.y, a.z, b.x, b.y, b.z)
-      const phase = ((i * 37) % 101) / 101
-      const flow = 0.4 + Math.min(3, speed / 8)
-      // Distance a streak travels per cycle also grows with speed.
-      const travel = 2 + Math.min(6, speed * 0.3)
-      const direction = new Vector3(b.x - a.x, b.y - a.y, b.z - a.z).normalize().multiplyScalar(travel)
-      phases.push(phase, phase)
-      flows.push(flow, flow)
-      speeds.push(speed, speed)
-      advections.push(direction.x, direction.y, direction.z, direction.x, direction.y, direction.z)
-    }))
-    this.windGeometry.setAttribute('position', new BufferAttribute(new Float32Array(positions), 3))
-    this.windGeometry.setAttribute('phase', new BufferAttribute(new Float32Array(phases), 1))
-    this.windGeometry.setAttribute('flow', new BufferAttribute(new Float32Array(flows), 1))
-    this.windGeometry.setAttribute('speed', new BufferAttribute(new Float32Array(speeds), 1))
-    this.windGeometry.setAttribute('advect', new BufferAttribute(new Float32Array(advections), 3))
-    this.windMaterial = new ShaderMaterial({
-      uniforms: { uTime: { value: 0 }, uAnimate: { value: this.reducedMotion ? 0 : 1 } },
-      vertexShader: windVertex,
-      fragmentShader: windFragment,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-    })
-    this.wind = new LineSegments(this.windGeometry, this.windMaterial)
-    this.wind.renderOrder = 3
+    // Wind: a swirling particle flow along the interpolated field (windFlow.ts). Reduced motion gets
+    // the same streamlines traced once and held still.
+    this.flow = new WindFlow(globe, weather)
+    if (this.reducedMotion) for (let i = 0; i < 16; i++) this.flow.step()
 
     this.waveGeometry = new BufferGeometry()
     const wavePositions: number[] = []
@@ -325,7 +244,7 @@ export class WeatherOverlay {
     })
     this.waves = new Points(this.waveGeometry, this.waveMaterial)
     this.waves.renderOrder = 4
-    globe.scene().add(this.wind, this.waves)
+    globe.scene().add(this.flow.object, this.waves)
     this.motionQuery.addEventListener('change', this.motionChange)
     this.animate()
   }
@@ -334,7 +253,7 @@ export class WeatherOverlay {
     if (this.disposed || this.reducedMotion || this.started) return
     this.started = true
     const tick = (time: number) => {
-      this.windMaterial.uniforms.uTime.value = time * 0.001
+      this.flow.tick(time)
       this.waveMaterial.uniforms.uTime.value = time * 0.001
       this.started = false
       if (!this.disposed && !this.reducedMotion) {
@@ -349,10 +268,9 @@ export class WeatherOverlay {
     this.disposed = true
     cancelAnimationFrame(this.frame)
     this.motionQuery.removeEventListener('change', this.motionChange)
-    this.globe.scene().remove(this.wind, this.waves)
-    this.windGeometry.dispose()
+    this.globe.scene().remove(this.flow.object, this.waves)
+    this.flow.dispose()
     this.waveGeometry.dispose()
-    this.windMaterial.dispose()
     this.waveMaterial.dispose()
   }
 }

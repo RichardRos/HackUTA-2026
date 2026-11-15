@@ -344,3 +344,25 @@ class SearchSummaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LocalNewsTests(unittest.TestCase):
+    def run_with(self, address, hit):
+        import mcp_server
+        with patch.object(mcp_server.world_data, "reverse_geocode", return_value=address),                 patch.object(mcp_server, "get_news", side_effect=lambda q, hours, **_: [{"title": q}] if hit(q, hours) else []) as news:
+            return mcp_server.get_local_news(45.76, 4.84), [(c.kwargs["q"], c.kwargs["hours"]) for c in news.call_args_list]
+
+    def test_walks_up_to_country(self):
+        out, calls = self.run_with({"city": "Lyon", "state": "Auvergne", "country": "France"}, lambda q, h: q == "France")
+        self.assertEqual(out, {"region": "France", "news": [{"title": "France"}], "hours": 336})
+        self.assertEqual(calls, [("Lyon", 336), ("Auvergne", 336), ("France", 336)])
+
+    def test_circles_back_with_wider_window(self):
+        out, calls = self.run_with({"city": "Lyon", "country": "France"}, lambda q, h: q == "Lyon" and h == 2160)
+        self.assertEqual(out["region"], "Lyon")
+        self.assertEqual(calls, [("Lyon", 336), ("France", 336), ("Lyon", 2160)])
+
+    def test_nothing_anywhere_returns_empty(self):
+        out, calls = self.run_with({"city": "Lyon"}, lambda q, h: False)
+        self.assertEqual(out, {"region": "Lyon", "news": [], "hours": 8760})
+        self.assertEqual(len(calls), 3)

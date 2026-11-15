@@ -5,6 +5,9 @@ import Assistant from './Assistant'
 import CommodityPanel from './CommodityPanel'
 import CountryPanel from './CountryPanel'
 import FocusPanel, { Card } from './FocusPanel'
+import GreekLore from './greek/GreekLore'
+import GreekSky from './greek/GreekSky'
+import type { LoreEntry } from './greek/myth'
 import LayerMenu, { type Layer } from './LayerMenu'
 import type { PlaneDot, ShipDot, TrackPoint } from './Earth'
 import PlanePanel from './PlanePanel'
@@ -57,18 +60,17 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   const [selected, setSelected] = useState<SignalEvent | null>(null)
   const [country, setCountry] = useState<string | null>(null)
   const [focusAt, setFocusAt] = useState<{ lat: number; lng: number } | null>(null)
+  const [localAt, setLocalAt] = useState<{ lat: number; lng: number } | null>(null) // deep-zoom click: regional news
   const [showGrid, setShowGrid] = useState(true)
   const [weatherEvents, setWeatherEvents] = useState<SignalEvent[]>([])
   const [weatherStatus, setWeatherStatus] = useState<'loading' | 'ready' | string>('loading')
   const [showWeather, setShowWeather] = useState(true)
   const [showShips, setShowShips] = useState(true)
   const [ships, setShips] = useState<ShipDot[]>([])
-  const [shipInfo, setShipInfo] = useState<{ tracked: number; connected: boolean } | null>(null)
   const [mmsi, setMmsi] = useState<number | null>(null)
   const [track, setTrack] = useState<TrackPoint[]>([])
   const [showCommodities, setShowCommodities] = useState(true)
   const [showPlanes, setShowPlanes] = useState(true)
-  const [cargoOnly, setCargoOnly] = useState(true)
   const [aircraft, setAircraft] = useState<Aircraft[]>([])
   const planes = useMemo(() => aircraft.map(toPlane), [aircraft])
   const [planeHex, setPlaneHex] = useState<string | null>(null)
@@ -85,9 +87,28 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   const [showTides, setShowTides] = useState(true)
   const [tides, setTides] = useState<TideStation[]>([])
   const [tideStatus, setTideStatus] = useState<'idle' | 'loading' | 'ready' | string>('idle')
-  const [tideMotion, setTideMotion] = useState(1)
-  const [tideClock, setTideClock] = useState<number | null>(null)
   const [tideId, setTideId] = useState<string | null>(null)
+
+  // Greek mode is strictly seafaring: ships, tides, wind and waves. Flights, oil and the other commodities,
+  // grid signals, city weather and country briefings are hidden. The user's own switches are kept for
+  // when Greek mode is turned off again.
+  const gridOn = showGrid && !greekMode
+  const cityWeatherOn = showWeather && !greekMode
+  const planesOn = showPlanes && !greekMode
+  const commoditiesOn = showCommodities && !greekMode
+  const activeView = greekMode ? 'world' : view
+  const overlay = greekMode && weatherLayer === 'weather' ? 'wind' : weatherLayer
+  useEffect(() => {
+    if (!greekMode) return
+    setSelected(null)
+    setCountry(null)
+    setPlaneHex(null)
+  }, [greekMode])
+
+  // Greek mode: the bestiary, Odysseus' voyage, and the legend open on the parchment card.
+  const [showMonsters, setShowMonsters] = useState(true)
+  const [showVoyage, setShowVoyage] = useState(true)
+  const [lore, setLore] = useState<LoreEntry | null>(null)
 
   useEffect(() => {
     if (!showTides) {
@@ -96,7 +117,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     }
     let live = true
     setTideStatus('loading')
-    // Predictions cover yesterday to +2 days, so one load lasts the session; refresh every 6 h anyway.
+    // A cold server cache takes ~25 s (hundreds of NOAA stations). Predictions cover yesterday to +2 days, so one load lasts the session; refresh every 6 h anyway.
     const load = () => api<TideOverview>('/tides')
       .then((r) => {
         if (!live) return
@@ -153,7 +174,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   }, [api])
 
   useEffect(() => {
-    if (weatherLayer !== 'wind') {
+    if (overlay !== 'wind') {
       setMarineStatus('idle')
       return
     }
@@ -167,14 +188,8 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       })
       .catch((e: Error) => live && setMarineStatus(e.message))
     return () => { live = false }
-  }, [api, weatherLayer])
+  }, [api, overlay])
 
-  const [motion, setMotion] = useState(1)
-  const motionRef = useRef(motion)
-  const changeMotion = (m: number) => {
-    motionRef.current = m
-    setMotion(m)
-  }
   useEffect(() => {
     if (!showShips) {
       setShips([])
@@ -183,14 +198,9 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     let live = true
     const load = () => {
       if (document.hidden) return // no polling in a background tab
-      if (motionRef.current > 1) return // time-lapse projects from the frozen fixes; a refresh would snap ships back
-      api<{ ships: ShipDot[]; tracked: number; connected: boolean }>('/ships')
-        .then((r) => {
-          if (!live) return
-          setShips(r.ships)
-          setShipInfo({ tracked: r.tracked, connected: r.connected })
-        })
-        .catch(() => live && setShipInfo(null))
+      api<{ ships: ShipDot[] }>('/ships')
+        .then((r) => live && setShips(r.ships))
+        .catch(() => {}) // keep the last positions; the next poll retries
     }
     load()
     const timer = setInterval(load, 30000)
@@ -201,18 +211,18 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   }, [api, showShips])
 
   useEffect(() => {
-    if (!showPlanes) {
+    if (!planesOn) {
       setAircraft([])
       return
     }
     let live = true
     const load = () => {
       if (document.hidden) return
-      api<{ aircraft: Aircraft[]; stale_error: string | null }>(`/flights/global${cargoOnly ? '?cargo=true' : ''}`)
+      api<{ aircraft: Aircraft[]; stale_error: string | null }>('/flights/global?cargo=true')
         .then((r) => {
           if (!live) return
           setAircraft(r.aircraft.filter((a) => !a.on_ground))
-          setPlaneNote(r.stale_error ? `Showing the last snapshot: ${r.stale_error}` : null)
+          setPlaneNote(null)
         })
         .catch((e: Error) => live && setPlaneNote(e.message))
     }
@@ -222,10 +232,10 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       live = false
       clearInterval(timer)
     }
-  }, [api, showPlanes, cargoOnly])
+  }, [api, planesOn])
 
   useEffect(() => {
-    if (!showCommodities) {
+    if (!commoditiesOn) {
       setCommodityEvents([])
       return
     }
@@ -241,10 +251,13 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     return () => {
       live = false
     }
-  }, [api, showCommodities])
-  const markers = useMemo(() => [...(showGrid ? events : []), ...(showWeather ? weatherEvents : []), ...commodityEvents], [showGrid, showWeather, events, weatherEvents, commodityEvents])
+  }, [api, commoditiesOn])
+  const markers = useMemo(
+    () => [...(gridOn ? events : []), ...(cityWeatherOn ? weatherEvents : []), ...(commoditiesOn ? commodityEvents : [])],
+    [gridOn, cityWeatherOn, commoditiesOn, events, weatherEvents, commodityEvents],
+  )
 
-  // One side panel at a time: a marker's signal, a country, a ship or a plane.
+  // One side panel at a time: a marker's signal, a country, a ship, a plane, a tide gauge or a legend.
   const clearFocus = useCallback(() => {
     setSelected(null)
     setCountry(null)
@@ -252,7 +265,13 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     setPlaneHex(null)
     setTideId(null)
     setFocusAt(null)
+    setLocalAt(null)
+    setLore(null)
   }, [])
+  const openLore = useCallback((entry: LoreEntry) => {
+    clearFocus()
+    setLore(entry)
+  }, [clearFocus])
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') clearFocus()
@@ -273,13 +292,14 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     if (e.commodity) setActiveCommodity(e.commodity)
     pickEvent(e)
   }, [pickEvent])
-  const pickCountry = useCallback((name: string, at?: { lat: number; lng: number }) => {
+  const pickCountry = useCallback((name: string, at?: { lat: number; lng: number }, deep = false) => {
     setSelected(null)
     setMmsi(null)
     setPlaneHex(null)
     setTideId(null)
     setCountry(name)
     setFocusAt(at ?? null)
+    setLocalAt(deep && at ? at : null)
   }, [])
   const shipsRef = useRef(ships)
   shipsRef.current = ships
@@ -314,154 +334,76 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
   }, [])
   const tideStation = tideId ? tides.find((t) => t.id === tideId) ?? null : null
   const focused = !!(selected || country || mmsi || planeHex || tideStation)
+  const ship = mmsi ? ships.find((s) => s.mmsi === mmsi) : undefined
+  const plane = planeHex ? aircraft.find((a) => a.hex === planeHex) : undefined
+  const at = (lat: number, lng: number) => `${lat.toFixed(3)}, ${lng.toFixed(3)}`
+  // what the assistant is told is on screen; ids and coordinates let it call the MCP tools itself
+  const onScreen: { topic: string; context: string } | null =
+    selected ? { topic: selected.title, context: `${selected.kicker}: ${selected.title}. ${selected.value} (${selected.valueLabel}). ${selected.body} At ${at(selected.lat, selected.lng)}.${selected.commodity ? ` Commodity: ${selected.commodity}.` : ''}` }
+      : country ? { topic: country, context: `Country dashboard for ${country} (Natural Earth name), ${view === 'commodities' ? `commodities view, active commodity ${activeCommodity}` : 'world view: briefing, news, markets, filings, Treasury, weather'}.${localAt ? ` Zoomed in on ${at(localAt.lat, localAt.lng)}: the News card shows regional stories for that point.` : focusAt ? ` Clicked at ${at(focusAt.lat, focusAt.lng)}.` : ''}` }
+        : mmsi ? { topic: ship?.name || `ship ${mmsi}`, context: `Ship panel: MMSI ${mmsi}${ship ? `, ${ship.name ?? 'unnamed'}, ${ship.category}, at ${at(ship.lat, ship.lon)}, ${ship.speed_kn ?? '?'} kn, course ${ship.course ?? '?'}°` : ''}.` }
+          : planeHex ? { topic: plane?.callsign?.trim() || `aircraft ${planeHex}`, context: `Aircraft panel: ICAO hex ${planeHex}${plane ? `, callsign ${plane.callsign ?? 'none'}, ${plane.cargo_operator ? `cargo operator ${plane.cargo_operator}, ` : ''}from ${plane.origin_country ?? '?'}, at ${at(plane.lat, plane.lon)}, ${plane.altitude_ft ?? '?'} ft` : ''}.` }
+            : tideStation ? { topic: tideStation.name, context: `Tide station panel: NOAA station ${tideStation.id}, ${tideStation.name}, at ${at(tideStation.lat, tideStation.lon)}.` }
+              : null
 
+  const failed = (st: string) => (st === 'idle' || st === 'loading' || st === 'ready' ? null : st)
   const layers: Layer[] = [
+    { id: 'grid', label: 'Grid demand', icon: <span className="pip-mark rising" />, color: '#ff6b6b', on: showGrid, onChange: setShowGrid, error: failed(status) },
+    { id: 'weather', label: 'Weather', icon: <span className="pip-mark rising" />, color: '#ff6b6b', on: showWeather, onChange: setShowWeather, error: failed(weatherStatus) },
+    { id: 'ships', label: greekMode ? 'Triremes & longships' : 'Ships', icon: <span className="ship-dot" />, color: '#ffc77a', on: showShips, onChange: setShowShips },
+    { id: 'planes', label: 'Cargo flights', icon: <span className="plane-dot" />, color: '#8fd3ff', on: showPlanes, onChange: setShowPlanes, error: planeNote },
+    { id: 'tides', label: 'Tides', icon: <span className="tide-dot" />, color: '#4ccbd1', on: showTides, onChange: setShowTides, error: failed(tideStatus) },
+    { id: 'commodities', label: 'Commodities', icon: <span className="pip-mark commodity rising" />, color: '#ff6b6b', on: showCommodities, onChange: setShowCommodities, error: commodityError },
+  ]
+  const greekLayers: Layer[] = [
     {
-      id: 'grid',
-      label: 'Grid demand signals',
-      icon: <span className="pip-mark rising" />,
-      color: '#ff6b6b',
-      on: showGrid,
-      onChange: setShowGrid,
-      note: status === 'loading' ? 'Loading…' : status === 'ready'
-        ? `${events.length} US regions furthest from EIA's forecast. ▲ above, ▼ below forecast.`
-        : <span className="error" role="alert">{status}</span>,
+      id: 'bestiary',
+      label: 'Bestiary',
+      icon: <span className="gm-mini" />,
+      color: '#e8c97a',
+      on: showMonsters,
+      onChange: setShowMonsters,
     },
     {
-      id: 'weather',
-      label: 'World weather',
-      icon: <span className="pip-mark rising" />,
-      color: '#ff6b6b',
-      on: showWeather,
-      onChange: setShowWeather,
-      note: weatherStatus === 'loading' ? 'Loading…' : weatherStatus === 'ready'
-        ? `${weatherEvents.length} city forecasts. ▲ feels warmer than air temperature; ▼ otherwise.`
-        : <span className="error" role="alert">{weatherStatus}</span>,
-    },
-    {
-      id: 'ships',
-       label: greekMode ? 'Longships' : 'Live ships',
-      icon: <span className="ship-dot" />,
-      color: '#ffc77a',
-      on: showShips,
-      onChange: setShowShips,
-       note: (
-         <>
-            {greekMode
-              ? shipInfo?.connected ? `${ships.length} live AIS vessels shown as longships` : 'Live vessel positions (AIS)'
-              : shipInfo
-                ? shipInfo.connected ? `${ships.length} cargo and tanker vessels heard via AIS` : 'AIS feed reconnecting…'
-                : 'Cargo and tanker vessel types (AIS)'}
-            {!greekMode && (
-              <span className="ship-legend" role="list" aria-label="Ship colors">
-                <span role="listitem"><i className="ship-legend-dot cargo" aria-hidden="true" />Cargo</span>
-                <span role="listitem"><i className="ship-legend-dot tanker" aria-hidden="true" />Tankers</span>
-                <span role="listitem"><i className="ship-legend-dot other" aria-hidden="true" />Other / unknown</span>
-              </span>
-            )}
-         </>
-       ),
-      extra: (
-        <div className="motion" role="radiogroup" aria-label="Ship motion speed">
-          {[1, 60, 600].map((m) => (
-            <button key={m} role="radio" aria-checked={motion === m} className={motion === m ? 'on' : ''} onClick={() => changeMotion(m)}>
-              {m === 1 ? 'Live' : `×${m}`}
-            </button>
-          ))}
-          <span className="micro">
-            {motion === 1 ? 'Real speed and course.' : `Time-lapse, projected ${motion}× from last reports. Live updates paused.`}
-          </span>
-        </div>
-      ),
-    },
-    {
-      id: 'planes',
-      label: 'Live flights',
-      icon: <span className="plane-dot" />,
-      color: '#8fd3ff',
-      on: showPlanes,
-      onChange: setShowPlanes,
-      note: planeNote
-        ? <span className="error" role="alert">{planeNote}</span>
-        : planes.length
-          ? `${planes.length.toLocaleString()} airborne, ${planes.filter((p) => p.cargo).length} cargo (amber). OpenSky, every 90 s.`
-          : 'Aircraft worldwide (ADS-B)',
-      extra: (
-        <div className="motion" role="radiogroup" aria-label="Which flights">
-          {[false, true].map((c) => (
-            <button key={String(c)} role="radio" aria-checked={cargoOnly === c} className={cargoOnly === c ? 'on' : ''} onClick={() => setCargoOnly(c)}>
-              {c ? 'Cargo only' : 'All'}
-            </button>
-          ))}
-        </div>
-      ),
-    },
-    {
-      id: 'tides',
-      label: 'Tides',
-      icon: <span className="tide-dot" />,
-      color: '#4ccbd1',
-      on: showTides,
-      onChange: setShowTides,
-      note: tideStatus === 'loading' ? 'Loading NOAA tide predictions…'
-        : tideStatus === 'ready' || tideStatus === 'idle'
-          ? (
-            <>
-              {tides.length ? `${tides.length} NOAA tide gauges.` : 'NOAA tide gauges, US coasts.'} Fill shows the water level between low and high; rings spread on the flood and draw in on the ebb.
-              <span className="ship-legend" role="list" aria-label="Tide colors">
-                <span role="listitem"><i className="ship-legend-dot flood" aria-hidden="true" />▲ Rising</span>
-                <span role="listitem"><i className="ship-legend-dot ebb" aria-hidden="true" />▼ Falling</span>
-              </span>
-            </>
-          )
-          : <span className="error" role="alert">{tideStatus}</span>,
-      extra: (
-        <div className="motion" role="radiogroup" aria-label="Tide clock speed">
-          {[1, 720].map((m) => (
-            <button key={m} role="radio" aria-checked={tideMotion === m} className={tideMotion === m ? 'on tide' : 'tide'} onClick={() => setTideMotion(m)}>
-              {m === 1 ? 'Live' : `×${m}`}
-            </button>
-          ))}
-          <span className="micro">
-            {tideMotion === 1 ? 'Current predicted tide.' : 'Time-lapse: a day of tides every two minutes, looping.'}
-            {tideClock !== null && <> Tide clock <b className="tide-clock">{new Date(tideClock).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC', hour12: false })} UTC</b></>}
-          </span>
-        </div>
-      ),
-    },
-    {
-      id: 'commodities',
-      label: 'Commodity futures',
-      icon: <span className="pip-mark commodity rising" />,
-      color: '#ff6b6b',
-      on: showCommodities,
-      onChange: setShowCommodities,
-      note: commodityError ?? '30-day change at each benchmark’s pricing point',
+      id: 'odyssey',
+      label: 'The Odyssey',
+      icon: <span className="route-mini" />,
+      color: '#e8c97a',
+      on: showVoyage,
+      onChange: setShowVoyage,
     },
   ]
+  // Greek mode keeps only the sea: the myth layers, then ships and tides.
+  const shownLayers = greekMode ? [...greekLayers, ...layers.filter((l) => l.id === 'ships' || l.id === 'tides')] : layers
 
   return (
     <div className={`world${focused ? ' focused' : ''}`}>
+      {greekMode && <GreekSky />}
       <div className="world-intro">
-        <p className="kicker">{view === 'world' ? 'Global editorial view' : 'Commodity monitoring'}</p>
-        <h1>{view === 'world' ? 'World view' : 'Commodities'}</h1>
+        {greekMode && <p className="greek-overline" lang="grc">ΘΑΛΑΣΣΑ · ΟΙΝΟΨ ΠΟΝΤΟΣ</p>}
+        <p className="kicker">{greekMode ? 'Seafaring view' : activeView === 'world' ? 'Global editorial view' : 'Commodity monitoring'}</p>
+        <h1>{greekMode ? 'The wine-dark sea' : activeView === 'world' ? 'World view' : 'Commodities'}</h1>
         <p className="muted">
-          {view === 'world'
-            ? 'Click any country for its briefing, news, filings and markets.'
-            : 'Click a country for commodity markets, funds and nearby benchmark prices.'}
+          {greekMode
+            ? 'Live ships sail as triremes, tankers as longships. Click a monster or a stop on Odysseus’ voyage for its legend. Wind & Surf shows wind and wave height.'
+            : activeView === 'world'
+              ? 'Click any country for its briefing, news, filings and markets.'
+              : 'Click a country for commodity markets, funds and nearby benchmark prices.'}
         </p>
       </div>
 
-      <div className="view-controls" aria-label="Globe views and weather">
-        <div className="view-switch" role="group" aria-label="Globe view">
-          {(['world', 'commodities'] as const).map((next) => (
-            <button key={next} type="button" aria-pressed={view === next}
-              className={view === next ? 'on' : ''} onClick={() => setView(next)}>
-              {next === 'world' ? 'World' : 'Commodities'}
-            </button>
-          ))}
-        </div>
-        {view === 'commodities' && (
+      <div className="view-controls" aria-label={greekMode ? 'Sea conditions' : 'Globe views and weather'}>
+        {!greekMode && (
+          <div className="view-switch" role="group" aria-label="Globe view">
+            {(['world', 'commodities'] as const).map((next) => (
+              <button key={next} type="button" aria-pressed={view === next}
+                className={view === next ? 'on' : ''} onClick={() => setView(next)}>
+                {next === 'world' ? 'World' : 'Commodities'}
+              </button>
+            ))}
+          </div>
+        )}
+        {activeView === 'commodities' && (
           <label className="commodity-select">
             <span className="sr-only">Active commodity</span>
             <select aria-label="Active commodity" value={activeCommodity}
@@ -472,38 +414,43 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
         )}
         <label className="commodity-select">
           <span className="sr-only">Weather layer</span>
-          <select aria-label="Weather layer" value={weatherLayer}
+          <select aria-label="Weather layer" value={overlay}
             onChange={(e) => setWeatherLayer(e.target.value as typeof weatherLayer)}>
             <option value="off">Off</option>
-            <option value="weather">Weather</option>
+            {!greekMode && <option value="weather">Weather</option>}
             <option value="wind">Wind &amp; Surf</option>
           </select>
         </label>
-        {weatherLayer !== 'off' && <p className="weather-note" aria-live="polite">
+        {overlay !== 'off' && <p className="weather-note" aria-live="polite">
           {weatherGridStatus === 'loading' ? 'Loading weather…'
             : weatherGridStatus !== 'ready' ? `Weather unavailable: ${weatherGridStatus}`
-              : weatherLayer === 'weather' ? `Temperature · rain${weatherGrid?.stale ? ' · last snapshot' : ''}`
+              : overlay === 'weather' ? `Temperature · rain${weatherGrid?.stale ? ' · last snapshot' : ''}`
                 : marineStatus === 'loading' ? 'Loading wave heights…'
                   : marineStatus !== 'ready' ? `Wind · surf unavailable: ${marineStatus}`
                     : `Wind · wave height${weatherGrid?.stale || marineGrid?.stale ? ' · last snapshot' : ''}`}
         </p>}
       </div>
 
-      <LayerMenu layers={layers} />
+      <LayerMenu layers={shownLayers} />
 
       <Suspense fallback={null}>
-        <Earth events={markers} selected={selected} onSelect={selectEvent} onCountry={pickCountry} ships={ships} onShip={pickShip} planes={planes} onPlane={pickPlane} motion={motion} track={mmsi ? track : undefined} focusAt={focused ? focusAt : null} greekMode={greekMode}
-          weather={weatherLayer === 'off' ? null : weatherGrid} marine={marineGrid}
-          windAndSurf={weatherLayer === 'wind' && marineStatus === 'ready'}
-          tides={showTides ? tides : NO_TIDES} tideMotion={tideMotion} onTide={pickTide} onTideClock={setTideClock} />
+        <Earth events={markers} selected={selected} onSelect={selectEvent} onCountry={greekMode ? undefined : pickCountry} ships={ships} onShip={pickShip}
+          planes={planesOn ? planes : undefined} onPlane={pickPlane} track={mmsi ? track : undefined} focusAt={focused ? focusAt : null} greekMode={greekMode}
+          weather={overlay === 'off' ? null : weatherGrid} marine={marineGrid}
+          temperature={overlay === 'weather'}
+          windAndSurf={overlay === 'wind' && marineStatus === 'ready'}
+          tides={showTides ? tides : NO_TIDES} onTide={pickTide}
+          showMonsters={showMonsters} showVoyage={showVoyage} onLore={openLore} lore={greekMode && !focused ? lore : null} />
       </Suspense>
+
+      {greekMode && lore && !focused && <GreekLore entry={lore} onPick={openLore} onClose={() => setLore(null)} />}
 
       {mmsi && <ShipPanel key={mmsi} mmsi={mmsi} onTrack={setTrack} onClose={clearFocus} />}
       {tideStation && <TidePanel key={tideStation.id} station={tideStation} onClose={clearFocus} />}
       {planeHex && <PlanePanel key={planeHex} hex={planeHex} aircraft={aircraft.find((a) => a.hex === planeHex) ?? null} onClose={clearFocus} />}
 
-      {country && <CountryPanel key={country} country={country} onClose={clearFocus} mode={view}
-        commodity={activeCommodity} coordinates={view === 'commodities' ? focusAt : null} />}
+      {country && <CountryPanel key={country} country={country} onClose={clearFocus} mode={activeView}
+        commodity={activeCommodity} coordinates={activeView === 'commodities' ? focusAt : localAt} />}
 
       {selected?.commodity && <CommodityPanel key={selected.commodity} commodity={selected.commodity} onClose={clearFocus} />}
 
@@ -523,16 +470,18 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
             </div>
           }
         >
-          <Card title="Source context" span={2}>
+          <Card title="Source context">
             <p className="sources">{selected.sources}</p>
           </Card>
-          <Card title="Dig deeper" span={2}>
+          <Card title="Dig deeper">
             <Link className="button" to={`/search?q=${encodeURIComponent(selected.query)}`}>Search live data</Link>
           </Card>
         </FocusPanel>
       )}
 
-      {!focused && <Assistant />}
+      {!(greekMode && lore && !focused) && (
+        <Assistant key={`chat:${onScreen?.topic ?? ''}`} topic={onScreen?.topic} context={onScreen?.context.slice(0, 2000)} greekMode={greekMode} />
+      )}
     </div>
   )
 }

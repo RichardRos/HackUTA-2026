@@ -100,19 +100,22 @@ export default function ShipPanel({ mmsi, onClose, onTrack }: { mmsi: number; on
     : []
   const vessel = rows.filter(([k]) => ['Cargo hazard', 'Status', 'Size', 'Draught'].includes(k))
   const identity = rows.filter(([k]) => ['MMSI', 'IMO', 'Call sign', 'Position'].includes(k))
-  const facts = (list: typeof rows) => (
+  const facts = (list: typeof rows) => !ship ? <p className="muted">{error ? 'Unavailable' : 'Loading…'}</p> : (
     <dl className="facts">
       {list.filter(([, x]) => v(x)).map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}
     </dl>
   )
 
-  const voyage = ship && (
+  // aside and cards render from the first frame so the grid never reflows when the fetch lands
+  const voyage = (
     <>
       <h3 className="section-title">Voyage</h3>
+      {!ship ? <p className="muted">{error ? 'Unavailable' : 'Loading…'}</p> : <>
       <p className="big">{ship.live === false ? 'Not heard live' : `Heard ${ago(ship.last_heard_s ?? 0)}`}</p>
       {ship.live === false && ship.stored_at && <p className="micro">Last stored {new Date(ship.stored_at).toLocaleString()}</p>}
       {ship.first_seen && <p className="muted">Tracked since {new Date(ship.first_seen).toLocaleDateString()}</p>}
       {fixes != null && <p className="muted">{fixes} stored position{fixes === 1 ? '' : 's'}, drawn in amber on the globe</p>}
+      </>}
       <p className="micro">Source: aisstream.io</p>
     </>
   )
@@ -138,8 +141,8 @@ export default function ShipPanel({ mmsi, onClose, onTrack }: { mmsi: number; on
         </>
       }
     >
-      {ship && <Card title="Vessel" span={2}>{facts(vessel)}</Card>}
-      {ship && <Card title="Identity" span={2}>{facts(identity)}</Card>}
+      <Card title="Vessel">{facts(vessel)}</Card>
+      <Card title="Identity">{facts(identity)}</Card>
     </FocusPanel>
   )
 }

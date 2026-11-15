@@ -30,6 +30,7 @@ from fastmcp.server.auth.providers.jwt import JWTVerifier  # noqa: E402
 
 import mcp_server as tools  # noqa: E402
 import ships  # noqa: E402
+import wx_scores  # noqa: E402
 from api import ask, assistant, assistant_store, wx_live  # noqa: E402
 from mcp_server import app as mcp_app  # noqa: E402
 
@@ -122,6 +123,14 @@ def news(
     return _run(tools.get_news, q=q, tag=tag, hours=hours, limit=limit)
 
 
+@rest.get("/news/local")
+def local_news(
+    lat: Annotated[float, Query(ge=-90, le=90)],
+    lon: Annotated[float, Query(ge=-180, le=180)],
+):
+    return _run(tools.get_local_news, lat, lon)
+
+
 _signals_cache: dict[int, tuple[float, list]] = {}
 
 
@@ -196,6 +205,22 @@ def wx_cities(start: date | None = None, end: date | None = None, lead_days: WxL
 def wx_city(location: Annotated[str, Path(max_length=40)], start: date | None = None,
             end: date | None = None, lead_days: WxLead = 1):
     return _run(tools.get_wx_city, location, start, end, lead_days)
+
+
+@rest.get("/wx/views/leaderboard")
+def wx_view_leaderboard(lead_days: WxLead | None = None):
+    """Test-period leaderboard view (nostos_wx.leaderboard_test); omit lead_days for all three."""
+    return _run(wx_scores.leaderboard_test, lead_days)
+
+
+@rest.get("/wx/views/cities")
+def wx_view_cities():
+    return _run(wx_scores.city_accuracy)
+
+
+@rest.get("/wx/views/cities/{location}/timeline")
+def wx_view_city_timeline(location: Annotated[str, Path(max_length=40, pattern=r"^[a-z_]+$")]):
+    return _run(wx_scores.city_timeline, location)
 
 
 @rest.get("/ships")
@@ -278,7 +303,7 @@ def tides_overview():
 
 
 @rest.get("/tides/{station_id}")
-def tide_station(station_id: Annotated[str, Path(pattern=r"^\d{7}$")]):
+def tide_station(station_id: Annotated[str, Path(pattern=r"^(\d{7}|om-[a-z0-9-]{1,48})$")]):
     return _run(tools.get_tide_station, station_id)
 
 
