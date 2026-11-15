@@ -1,10 +1,16 @@
 # Hourly ingest: national EIA-930 demand + forecast (every BA, region and sub-BA zone)
-# and NOAA weather (NBM bulletins, NWS gridpoint forecasts, NWS observations).
+# and NOAA weather (NBM bulletins, NWS gridpoint forecasts, NWS observations, GFS global model).
 # Repo secrets (Settings -> Secrets and variables -> Actions):
 #   TIMESCALE_SERVICE_URL  required
 #   EIA_API_KEY            required (free: https://www.eia.gov/opendata/register.php)
 #   NWS_USER_AGENT         optional, e.g. "nostos-ingest (team-contact@example.com)";
 #                          api.weather.gov asks clients to identify themselves
+<<<<<<< Updated upstream
+=======
+#   PGPASSWORD             required unless TIMESCALE_SERVICE_URL contains the password
+#                          (Tiger Cloud's credentials file keeps it on its own PGPASSWORD line).
+#                          TIMESCALE_PASSWORD / TIMESCALE_SERVICE_PASSWORD also work.
+>>>>>>> Stashed changes
 name: ingest
 
 on:
@@ -30,5 +36,9 @@ jobs:
       - run: python ingest/update.py
         env:
           TIMESCALE_SERVICE_URL: ${{ secrets.TIMESCALE_SERVICE_URL }}
+<<<<<<< Updated upstream
+=======
+          PGPASSWORD: ${{ secrets.PGPASSWORD || secrets.TIMESCALE_PASSWORD || secrets.TIMESCALE_SERVICE_PASSWORD }}
+>>>>>>> Stashed changes
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
           NWS_USER_AGENT: ${{ secrets.NWS_USER_AGENT }}

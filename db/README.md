@@ -32,6 +32,7 @@ python db/run_sql.py -c "SELECT * FROM scoreboard_summary"
 | `04_backtest.sql` | Backtest views and integrity checks |
 | `05_api.sql` | Latest-run index and `latest_forecast` view |
 | `06_national_noaa.sql` | National EIA (`balancing_authorities.kind`, `grid_subba_hourly`, `eia_subbas`), NOAA weather columns + `extra` JSONB, station ids on `weather_points`, widened integrity checks. Supersedes the Open-Meteo notes in `01_schema.sql`. |
+| `07_global_gfs.sql` | Global weather: `weather_points` can hold world-city points (`purpose = 'global'`, no BA, `country`), GFS source (`gfs_0p25`), and `point_forecast_asof()` for non-BA points. |
 | `99_clear_fake.sql` | Deletes the fake data. **Run it BEFORE the real backfill.** |
 
 `run_sql.py` runs each statement with autocommit, like `psql -f`. Continuous aggregates can't be created inside a transaction.

@@ -1,3 +1,5 @@
 psycopg[binary]>=3.1
 python-dotenv>=1.0
 pyarrow>=14          # NCEI GHCNh Parquet files (backfill only)
+numpy>=1.24          # GFS grids
+eccodes>=2.37        # GFS GRIB2 decoding (pulls in the eccodeslib binary wheel; no system install needed)
