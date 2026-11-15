@@ -266,6 +266,8 @@ main { height: calc(100% - 72px); }
 .world-intro .layer .micro { grid-column: 1 / -1; margin: 0; display: block !important; }
 .ship-dot { width: 8px; height: 8px; border-radius: 50%; background: #ffc77a; }
 .plane-dot { width: 8px; height: 8px; border-radius: 50%; background: #8fd3ff; }
+/* Tide gauge icon: a ring half full of water, same teal/blue as the globe gauges (tideLayer.ts). */
+.tide-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #d9f2f5; background: linear-gradient(to top, #4dccd1 50%, transparent 50%); }
 .facts { margin: 0 0 16px; display: grid; gap: 8px; }
 .facts div { display: grid; grid-template-columns: 110px 1fr; gap: 12px; font-size: 14px; }
 .facts dt { font: 400 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding-top: 2px; }
@@ -303,6 +305,12 @@ main { height: calc(100% - 72px); }
 .ship-legend-dot { width: 7px; height: 7px; border-radius: 50%; background: #ffc77a; }
 .ship-legend-dot.tanker { background: #62c7e8; }
 .ship-legend-dot.other { background: #aebabe; }
+.ship-legend-dot.flood { background: #4dccd1; }
+.ship-legend-dot.ebb { background: #3d85db; }
+.motion button.on.tide { border-color: #4dccd1; }
+.tide-clock { font: 500 11px var(--mono); color: var(--text); white-space: nowrap; }
+.tide-dir.flood span { color: #4dccd1; }
+.tide-dir.ebb span { color: #3d85db; }
 .layers.rail { width: auto; padding: 8px; display: grid; gap: 6px; }
 .layers.rail .rail-toggle { margin: 0; }
 .rail-layer { width: 32px; height: 32px; display: grid; place-items: center; background: none; border: 1px solid var(--line); border-radius: 2px; opacity: .45; }

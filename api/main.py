@@ -272,6 +272,16 @@ def marine_grid():
     return _run(tools.get_marine_grid)
 
 
+@rest.get("/tides")
+def tides_overview():
+    return _run(tools.get_tides)
+
+
+@rest.get("/tides/{station_id}")
+def tide_station(station_id: Annotated[str, Path(pattern=r"^\d{7}$")]):
+    return _run(tools.get_tide_station, station_id)
+
+
 @rest.get("/commodities/{commodity}")
 def commodity_futures(commodity: tools.Commodity, days: Annotated[int, Query(ge=5, le=365)] = 30):
     return _run(tools.get_commodity_futures, commodity, days)

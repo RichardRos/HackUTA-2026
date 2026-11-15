@@ -218,3 +218,111 @@ export function CommodityPriceChart({ contract }: { contract: Contract }) {
     </div>
   )
 }
+
+export type TidePoint = { t: string; v: number; type?: 'H' | 'L' }
+
+const fmtTideTime = (ms: number) => {
+  const d = new Date(ms)
+  return `${d.toLocaleDateString([], { weekday: 'short', timeZone: 'UTC' })} ${d.toISOString().slice(11, 16)}`
+}
+
+/** Water level above MLLW: NOAA's predicted curve (area) and the gauge's observed level, past to +48 h. */
+export function TideChart({ predicted, observed, events, now }: { predicted: TidePoint[]; observed: TidePoint[]; events: TidePoint[]; now: number }) {
+  const H = 210
+  const pad = { l: 40, r: 64, t: 16, b: 24 }
+  const ms = (p: TidePoint) => Date.parse(p.t)
+  const t0 = ms(predicted[0])
+  const t1 = ms(predicted[predicted.length - 1])
+  const values = [...predicted, ...observed].map((p) => p.v)
+  const lo = Math.floor((Math.min(...values) - 0.15) * 10) / 10
+  const hi = Math.ceil((Math.max(...values) + 0.25) * 10) / 10
+  const sx = (t: number) => pad.l + ((t - t0) / (t1 - t0)) * (W - pad.l - pad.r)
+  const sy = (v: number) => pad.t + ((hi - v) / (hi - lo)) * (H - pad.t - pad.b)
+  const line = (ps: TidePoint[]) => ps.map((p, k) => `${k ? 'L' : 'M'}${sx(ms(p)).toFixed(1)},${sy(p.v).toFixed(1)}`).join('')
+  const area = `${line(predicted)}L${sx(t1).toFixed(1)},${sy(lo)}L${sx(t0).toFixed(1)},${sy(lo)}Z`
+  const yTicks = [lo, (lo + hi) / 2, hi]
+  const xTicks: number[] = []
+  for (let t = Math.ceil(t0 / 86_400_000) * 86_400_000; t <= t1; t += 86_400_000) xTicks.push(t) // each UTC midnight
+  const turns = events.filter((e) => ms(e) >= t0 && ms(e) <= t1)
+  const ahead = turns.filter((e) => ms(e) > now) // label only what is coming; past turns keep their dot
+  const hover = useHover(predicted.map((p) => sx(ms(p))))
+  const h = hover.i === null ? null : predicted[hover.i]
+  const ho = h ? observed.reduce<TidePoint | null>((best, p) =>
+    Math.abs(ms(p) - ms(h)) <= 6 * 60_000 && (!best || Math.abs(ms(p) - ms(h)) < Math.abs(ms(best) - ms(h))) ? p : best, null) : null
+  const lastObs = observed[observed.length - 1]
+  const nowX = sx(Math.min(Math.max(now, t0), t1))
+
+  return (
+    <figure className="chart tide-chart">
+      <ul className="chart-legend">
+        <li><svg width="18" height="8" aria-hidden="true"><line x1="0" y1="4" x2="18" y2="4" stroke={PAST} strokeWidth="2" /></svg>Predicted</li>
+        {observed.length > 1 && <li><svg width="18" height="8" aria-hidden="true"><line x1="0" y1="4" x2="18" y2="4" stroke={NOW} strokeWidth="2" /></svg>Observed</li>}
+      </ul>
+      <div className="chart-plot">
+        <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Tide height above MLLW, predicted${observed.length > 1 ? ' and observed' : ''}, ${fmtTideTime(t0)} to ${fmtTideTime(t1)} UTC`}
+          onMouseMove={hover.onMove} onMouseLeave={hover.onLeave}>
+          <defs>
+            <linearGradient id="tide-fill" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0" stopColor={PAST} stopOpacity="0.28" />
+              <stop offset="1" stopColor={PAST} stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          {yTicks.map((t) => (
+            <g key={t}>
+              <line x1={pad.l} x2={W - pad.r} y1={sy(t)} y2={sy(t)} className="grid" />
+              <text x={pad.l - 6} y={sy(t) + 3} textAnchor="end" className="tick">{t.toFixed(1)} m</text>
+            </g>
+          ))}
+          {xTicks.map((t) => (
+            <g key={t}>
+              <line x1={sx(t)} x2={sx(t)} y1={pad.t} y2={H - pad.b} className="grid" />
+              <text x={sx(t)} y={H - 6} textAnchor="middle" className="tick">{new Date(t).toLocaleDateString([], { weekday: 'short', day: 'numeric', timeZone: 'UTC' })}</text>
+            </g>
+          ))}
+          <path d={area} fill="url(#tide-fill)" />
+          <path d={line(predicted)} fill="none" stroke={PAST} strokeWidth="2" strokeLinejoin="round" />
+          {observed.length > 1 && <path d={line(observed)} fill="none" stroke={NOW} strokeWidth="2" strokeLinejoin="round" />}
+          <line x1={nowX} x2={nowX} y1={pad.t - 6} y2={H - pad.b} className="crosshair" />
+          <text x={nowX} y={pad.t - 8} textAnchor="middle" className="direct">Now</text>
+          {turns.map((e) => (
+            <g key={e.t}>
+              <circle cx={sx(ms(e))} cy={sy(e.v)} r="4" fill={PAST} className="dot" />
+              {ahead.includes(e) && (
+                <text x={sx(ms(e))} y={sy(e.v) + (e.type === 'H' ? -9 : 15)} textAnchor="middle" className="tick">
+                  {e.type === 'H' ? 'High' : 'Low'} {e.v.toFixed(1)}
+                </text>
+              )}
+            </g>
+          ))}
+          <text x={W - pad.r + 6} y={sy(predicted[predicted.length - 1].v) + 3} className="direct">Predicted</text>
+          {lastObs && observed.length > 1 && (
+            <text x={sx(ms(observed[0])) + 4} y={sy(Math.max(observed[0].v, predicted[0].v)) - 8} className="direct">Observed</text>
+          )}
+          {h && (
+            <g>
+              <line x1={sx(ms(h))} x2={sx(ms(h))} y1={pad.t} y2={H - pad.b} className="crosshair" />
+              {ho && <circle cx={sx(ms(ho))} cy={sy(ho.v)} r="4" fill={NOW} className="dot" />}
+              <circle cx={sx(ms(h))} cy={sy(h.v)} r="4" fill={PAST} className="dot" />
+            </g>
+          )}
+        </svg>
+        {h && (
+          <div className="chart-tip" style={{ left: `clamp(90px, ${(sx(ms(h)) / W) * 100}%, calc(100% - 90px))` }}>
+            <b>{fmtTideTime(ms(h))} UTC</b>
+            <span>Predicted {h.v.toFixed(2)} m</span>
+            {ho && <span>Observed {ho.v.toFixed(2)} m</span>}
+          </div>
+        )}
+      </div>
+      <details className="chart-table">
+        <summary>Table</summary>
+        <table>
+          <thead><tr><th>Time (UTC)</th><th>Turn</th><th>Height</th></tr></thead>
+          <tbody>
+            {turns.map((e) => <tr key={e.t}><td>{fmtTideTime(ms(e))}</td><td>{e.type === 'H' ? 'High' : 'Low'}</td><td>{e.v.toFixed(2)} m</td></tr>)}
+          </tbody>
+        </table>
+      </details>
+    </figure>
+  )
+}

@@ -5,9 +5,12 @@ import { feature } from 'topojson-client'
 import atlas from 'world-atlas/countries-110m.json'
 import type { SignalEvent } from './events'
 import { CARGO_PLANE_STYLE, PLANE_STYLE, SHIP_STYLE, TRIREME_STYLE, ShipLayer, type MovingShip } from './shipLayer'
+import { TideLayer, type TideStation } from './tideLayer'
 import { WeatherOverlay, weatherTexture, type MarineGrid, type WeatherGrid } from './weatherLayer'
 
 type Country = { id: string; properties: { name: string } }
+
+const fmtUtc = (iso: string) => `${iso.slice(11, 16)} UTC`
 
 const LAND = '#1a272d'
 const LINE = '#2d3d43'
@@ -60,6 +63,10 @@ type Props = {
   marine?: MarineGrid | null
   windAndSurf?: boolean
   greekMode?: boolean
+  tides?: TideStation[] // NOAA tide gauges; empty hides the layer
+  tideMotion?: number // tide clock multiplier; 1 = live
+  onTide?: (id: string) => void
+  onTideClock?: (ms: number) => void // the tide clock, a few times a second in time-lapse
 }
 
 export type TrackPoint = { lat: number; lon: number }
@@ -70,9 +77,10 @@ const NO_EVENTS: SignalEvent[] = []
 const NO_SHIPS: ShipDot[] = []
 const NO_PLANES: PlaneDot[] = []
 const NO_TRACK: TrackPoint[] = []
+const NO_TIDES: TideStation[] = []
 const SHIP = '#ffc77a' // the Figma's ship amber
 
-export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, greekMode = false }: Props) {
+export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountry, ships = NO_SHIPS, onShip, planes = NO_PLANES, onPlane, motion = 1, track = NO_TRACK, focusAt = null, ambient = false, weather = null, marine = null, windAndSurf = false, greekMode = false, tides = NO_TIDES, tideMotion = 1, onTide, onTideClock }: Props) {
   const globe = useRef<GlobeMethods | undefined>(undefined)
   const [box, { width, height }] = useSize()
   const [hover, setHover] = useState<Country | null>(null)
@@ -198,6 +206,26 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     }
   }, [ready, ambient, greekMode])
   useEffect(() => shipLayer.current?.setShips(ships), [ships, ready, greekMode])
+  const onTideRef = useRef(onTide)
+  const onTideClockRef = useRef(onTideClock)
+  useEffect(() => {
+    onTideRef.current = onTide
+    onTideClockRef.current = onTideClock
+  })
+  const tideLayer = useRef<TideLayer | null>(null)
+  useEffect(() => {
+    const g = globe.current
+    if (!g || !ready || ambient) return
+    const layer = new TideLayer(g)
+    layer.onClock = (ms) => onTideClockRef.current?.(ms)
+    tideLayer.current = layer
+    return () => {
+      layer.dispose()
+      tideLayer.current = null
+    }
+  }, [ready, ambient])
+  useEffect(() => tideLayer.current?.setStations(tides), [tides, ready, ambient])
+  useEffect(() => tideLayer.current?.setMotion(tideMotion), [tideMotion, ready, ambient])
   // Planes: passenger and cargo as two point layers (one icon colour each), always real time.
   const planeLayers = useRef<ShipLayer[]>([])
   useEffect(() => {
@@ -237,13 +265,27 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     if (plane) {
       e.stopPropagation()
       onPlaneRef.current?.(plane.hex)
+      return
+    }
+    const tide = tideLayer.current?.pick(...local(e))
+    if (tide) {
+      e.stopPropagation()
+      onTideRef.current?.(tide.station.id)
     }
   }
   const onShipPointer = (e: ReactPointerEvent<HTMLDivElement>) => {
     const [x, y] = local(e)
     const hit = shipLayer.current?.pick(x, y)
     const plane = hit ? null : planeLayers.current.map((l) => l.pick(x, y)).find(Boolean)
-    e.currentTarget.style.cursor = hit || plane ? 'pointer' : ''
+    const tide = hit || plane ? null : tideLayer.current?.pick(x, y)
+    e.currentTarget.style.cursor = hit || plane || tide ? 'pointer' : ''
+    if (tide) {
+      const { station, state } = tide
+      const where = station.state ? `${station.name}, ${station.state}` : station.name
+      return setShipTip({ x, y, text: state
+        ? `${where} · ${state.level.toFixed(2)} m ${state.rising ? '▲ rising' : '▼ falling'} · ${state.next.type === 'H' ? 'high' : 'low'} ${fmtUtc(state.next.t)}`
+        : `${where} · tide gauge` })
+    }
     if (plane) return setShipTip({ x, y, text: `✈ ${plane.name ?? 'Unknown flight'} · ${plane.category}` })
     setShipTip(hit ? { x, y, text: `${hit.name ?? `MMSI ${hit.mmsi}`} · ${hit.category}${hit.speed_kn ? ` · ${hit.speed_kn} kn` : ''}` } : null)
   }
