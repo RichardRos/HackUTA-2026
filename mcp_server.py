@@ -1056,11 +1056,11 @@ def plan_voyage(
     is costed by a SuperLearner speed model using the waves, wind and currents forecast for the hour
     the ship reaches it. Returns ETA with a 90% band, distance, time saved against the shortest path,
     worst seas and canals used. depart: ISO time within the next 7 days (default now)."""
-    from voyage import router
+    from voyage import remote  # the Vultr voyage service when VOYAGE_REMOTE_URL is set
 
     start = (start_lat, start_lon) if start_lat is not None and start_lon is not None else None
     end = (end_lat, end_lon) if end_lat is not None and end_lon is not None else None
-    result = router.plan(mode=mode, vessel_id=vessel, start=start, end=end, start_port=start_port,
+    result = remote.plan(mode=mode, vessel_id=vessel, start=start, end=end, start_port=start_port,
                          end_port=end_port, depart=depart, speed_kn=speed_kn)
     if include_path:
         return result

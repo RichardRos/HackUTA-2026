@@ -1,0 +1,46 @@
+# The Vultr voyage instance: route computation (voyage/service.py) behind Caddy's automatic HTTPS, plus
+# the weekly SuperLearner retrain. Started by `python -m voyage.vultr --serve`; .env there is written by it.
+#   VOYAGE_HOST            e.g. 203-0-113-7.sslip.io (public IP as a hostname, so Let's Encrypt works)
+#   VOYAGE_SERVICE_TOKEN   shared with the nostos API (VOYAGE_REMOTE_URL / VOYAGE_SERVICE_TOKEN there)
+services:
+  voyage:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: unused  # the image bundles the web app; this service never serves it
+    command: ["uvicorn", "voyage.service:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - voyage-models:/app/models
+    security_opt:
+      - no-new-privileges:true
+
+  caddy:
+    image: caddy:2.8.4
+    command: ["caddy", "reverse-proxy", "--from", "${VOYAGE_HOST:?set VOYAGE_HOST}", "--to", "voyage:8000"]
+    restart: unless-stopped
+    ports:
+      - "80:80"    # Let's Encrypt HTTP challenge
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      - voyage
+
+  voyage-train:
+    profiles: [train]
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: unused
+    command: ["python", "-m", "voyage.train"]
+    env_file: .env
+    volumes:
+      - voyage-models:/app/models
+
+volumes:
+  voyage-models:
+  caddy-data:

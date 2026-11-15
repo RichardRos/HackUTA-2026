@@ -331,9 +331,9 @@ def voyage_options():
 
 @rest.post("/voyage/route")
 def voyage_route(body: VoyageRequest):
-    from voyage import router  # numpy, scikit-learn: load on first use, not at API start
+    from voyage import remote  # the Vultr voyage service when VOYAGE_REMOTE_URL is set, else in-process
 
-    return _run(router.plan, mode=body.mode, vessel_id=body.vessel,
+    return _run(remote.plan, mode=body.mode, vessel_id=body.vessel,
                 start=(body.start.lat, body.start.lon) if body.start else None,
                 end=(body.end.lat, body.end.lon) if body.end else None,
                 start_port=body.start_port, end_port=body.end_port, depart=body.depart,

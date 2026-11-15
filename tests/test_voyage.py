@@ -319,3 +319,38 @@ class ParallelForecastTest(unittest.TestCase):
             data = conditions._cache[p][1]
             self.assertEqual((data["wave_height"], data["wind_speed_10m"]), ([p[1]], [p[1]]))
         conditions._cache.clear()
+
+
+class RemoteServiceTest(unittest.TestCase):
+    def test_service_needs_the_token_and_passes_tuples_to_the_router(self):
+        from voyage import service
+
+        with patch.dict(os.environ, {"VOYAGE_SERVICE_TOKEN": "s3cret"}), \
+                patch.object(service, "_warm"), \
+                patch.object(router, "plan", return_value={"legs": []}) as plan:
+            client = TestClient(service.app)
+            body = {"mode": "points", "vessel_id": "container", "start": [1.0, 2.0], "end": [3.0, 4.0]}
+            self.assertEqual(client.post("/plan", json=body).status_code, 401)
+            self.assertEqual(client.post("/plan", json=body, headers={"Authorization": "Bearer nope"}).status_code, 401)
+            self.assertEqual(client.post("/plan", json={**body, "model": 1},
+                                         headers={"Authorization": "Bearer s3cret"}).status_code, 400)
+            r = client.post("/plan", json=body, headers={"Authorization": "Bearer s3cret"})
+            self.assertEqual(r.status_code, 200)
+            self.assertEqual(plan.call_args.kwargs["start"], (1.0, 2.0))
+
+    def test_remote_falls_back_to_local_when_the_service_is_down_but_not_on_bad_requests(self):
+        import httpx
+
+        from voyage import remote
+
+        with patch.dict(os.environ, {"VOYAGE_REMOTE_URL": "https://voyage.example"}), \
+                patch.object(router, "plan", return_value={"legs": []}):
+            with patch.object(remote.httpx, "post", side_effect=httpx.ConnectError("down")):
+                self.assertEqual(remote.plan(mode="ports")["computed_on"], "local")
+            with patch.object(remote.httpx, "post", return_value=httpx.Response(503)):
+                self.assertEqual(remote.plan(mode="ports")["computed_on"], "local")
+            with patch.object(remote.httpx, "post", return_value=httpx.Response(200, json={"legs": [1]})):
+                self.assertEqual(remote.plan(mode="ports"), {"legs": [1], "computed_on": "vultr"})
+            with patch.object(remote.httpx, "post", return_value=httpx.Response(400, json={"detail": "no sea route"})):
+                with self.assertRaisesRegex(ValueError, "no sea route"):
+                    remote.plan(mode="ports")

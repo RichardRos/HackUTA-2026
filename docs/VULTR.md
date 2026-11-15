@@ -82,6 +82,18 @@ wind and currents for each fix from Open-Meteo. Open-Meteo keeps about 3 months 
 matches the 90-day AIS retention. The log prints cross-validated R², the base-learner weights, the
 conformal interval, and how far the physics prior alone is off on real AIS rows.
 
+## 3b. Route service (routes computed on Vultr)
+
+```bash
+python -m voyage.vultr --serve    # vhf-2c-4gb in ewr, ~8 min: prints VOYAGE_REMOTE_URL and VOYAGE_SERVICE_TOKEN
+python -m voyage.vultr --stop     # delete it
+```
+
+The instance runs `compose.voyage.yaml`: `voyage/service.py` (POST /plan, bearer token) behind Caddy's
+automatic HTTPS on `<ip>.sslip.io`, plus the weekly retrain from cron. Put the two printed lines in the
+API's `.env` and `docker compose up -d api`; every route (website and assistant) is then computed there
+(`voyage/remote.py`), and computed locally if the service is unreachable (`computed_on` says which).
+
 ## 4. Forecast quota
 
 Routing fetches hourly forecasts for 2° lattice points around each route, cached for 3 hours per
