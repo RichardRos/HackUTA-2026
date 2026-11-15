@@ -101,7 +101,10 @@ const FIELD = Array.from({ length: 190 }, (_, i) => ({
 }))
 
 function GreekSky() {
+  // Twinkling stars live in their own small SVG: animating them inside the main one repainted the
+  // whole sky (190 stars, constellations, lettering) every frame.
   return (
+    <>
     <svg className="greek-sky" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
       <defs>
         <radialGradient id="sky-milk" cx="50%" cy="50%" r="50%">
@@ -116,9 +119,8 @@ function GreekSky() {
         </radialGradient>
       </defs>
       <ellipse cx="800" cy="420" rx="980" ry="150" fill="url(#sky-milk)" transform="rotate(-24 800 420)" />
-      {FIELD.map((s, i) => (
-        <circle key={i} cx={s.x.toFixed(1)} cy={s.y.toFixed(1)} r={s.r.toFixed(2)} fill="#f3ead6" opacity={s.o.toFixed(2)}
-          className={s.twinkle ? 'twinkle' : undefined} style={s.twinkle ? { animationDelay: `${s.delay.toFixed(2)}s` } : undefined} />
+      {FIELD.filter((s) => !s.twinkle).map((s, i) => (
+        <circle key={i} cx={s.x.toFixed(1)} cy={s.y.toFixed(1)} r={s.r.toFixed(2)} fill="#f3ead6" opacity={s.o.toFixed(2)} />
       ))}
       {GROUPS.map((g, gi) => g.figures.map((f) => {
         const p = (id: string) => project(g, f.stars[id])
@@ -146,6 +148,13 @@ function GreekSky() {
         “the Bear, which alone has no share in the baths of Ocean” · Od. 5.275
       </text>
     </svg>
+    <svg className="greek-sky twinkles" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      {FIELD.filter((s) => s.twinkle).map((s, i) => (
+        <circle key={i} cx={s.x.toFixed(1)} cy={s.y.toFixed(1)} r={s.r.toFixed(2)} fill="#f3ead6" opacity={s.o.toFixed(2)}
+          className="twinkle" style={{ animationDelay: `${s.delay.toFixed(2)}s` }} />
+      ))}
+    </svg>
+    </>
   )
 }
 

@@ -79,3 +79,31 @@ class SovereignCurveTest(unittest.TestCase):
         self.assertIn("euro-area", ee["source"])
         with self.assertRaises(ValueError):
             world_data.sovereign_curve("Chad")
+
+
+class KeepLastTest(unittest.TestCase):
+    def test_disk_restart_cooldown_and_lists(self):
+        import tempfile
+        import httpx
+        calls = []
+
+        def make():
+            @world_data.keep_last(fresh=3600)
+            def grid():
+                calls.append(1)
+                if len(calls) > 1:
+                    raise httpx.HTTPError("429")
+                return [1, 2]
+            return grid
+
+        with tempfile.TemporaryDirectory() as d, patch.object(world_data, "CACHE_DIR", d):
+            self.assertEqual(make()(), [1, 2])           # fetched and saved
+            self.assertEqual(make()(), [1, 2])           # "restart": fresh copy from disk, no call
+            self.assertEqual(len(calls), 1)
+        with tempfile.TemporaryDirectory() as d, patch.object(world_data, "CACHE_DIR", d):
+            calls.clear()
+            stale = world_data.keep_last(lambda: (calls.append(1), {"a": 1})[1] if len(calls) < 1 else (_ for _ in ()).throw(httpx.HTTPError("429")))
+            self.assertEqual(stale(), {"a": 1})
+            self.assertEqual(stale(), {"a": 1, "stale": True})  # failure: last good, marked stale
+            stale()
+            self.assertEqual(len(calls), 1)                   # cooldown: no second upstream call

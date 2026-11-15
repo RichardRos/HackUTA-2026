@@ -179,7 +179,7 @@ def _noaa_station(s: dict, kind: str) -> dict:
 
 
 @ttl_cache(24 * 3600)
-@keep_last
+@keep_last(fresh=24 * 3600)
 def tide_stations() -> list[dict]:
     """NOAA tidal gauges (Great Lakes have no tides), then harmonic prediction stations that fill gaps."""
     gauges = [_noaa_station(s, "gauge") for s in _get(STATIONS, {"type": "waterlevels"}).get("stations", [])
@@ -239,7 +239,7 @@ def turns(series: list[dict], min_swing: float = MIN_SWING_M) -> list[dict]:
 
 
 @ttl_cache(6 * 3600)
-@keep_last
+@keep_last(fresh=6 * 3600)
 def _model_tides() -> dict[str, dict]:
     """Hourly modelled sea level for GLOBAL_POINTS, yesterday through +2 days, keyed by station id."""
     out: dict[str, dict] = {}
@@ -287,7 +287,7 @@ def _station_events(station: dict, begin: datetime, end: datetime) -> dict | Non
 
 
 @ttl_cache(6 * 3600)
-@keep_last
+@keep_last(fresh=6 * 3600)
 def _overview() -> dict:
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     begin, end = today - timedelta(days=1), today + timedelta(days=3) - timedelta(minutes=1)

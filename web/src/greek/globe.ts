@@ -41,7 +41,7 @@ export function greekOceanTexture() {
   const g = c.getContext('2d')!
   const tex = new CanvasTexture(c)
   tex.colorSpace = SRGBColorSpace
-  tex.anisotropy = 16 // three.js clamps this to what the GPU supports; it keeps the sea sharp toward the globe's rim
+  tex.anisotropy = 4 // sharp enough toward the rim; 16x on a 4096² map cost real fill rate on laptop GPUs
   const X = (lng: number) => ((lng + 180) / 360) * W
   const Y = (lat: number) => ((90 - lat) / 180) * H
 

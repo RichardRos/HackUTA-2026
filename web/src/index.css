@@ -494,7 +494,7 @@ html[data-greek="true"] .search-suggestions button { font-family: var(--serif); 
 .oracle-motto [lang="grc"] { font-family: var(--greek); font-style: normal; color: var(--accent); letter-spacing: .06em; }
 
 /* the night sky behind the globe */
-.greek-sky { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.greek-sky { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; will-change: transform; contain: strict; } /* own layer: rasterised once, not per frame */
 .greek-sky .constellation polyline { fill: none; stroke: rgba(232, 201, 122, .3); stroke-width: 1; stroke-linejoin: round; }
 .greek-sky .cstar { fill: #fff4d6; }
 .greek-sky .constellation text { fill: rgba(232, 201, 122, .55); font: 400 13px var(--greek); letter-spacing: .32em; text-anchor: middle; }
@@ -513,9 +513,9 @@ span.gm-body { pointer-events: none; cursor: default; }
 .gm-body.crowded { opacity: 0; transform: scale(.4); }
 .gm-body:hover, .gm-body:focus-visible, .gm-body.active { transform: scale(1.22); }
 .gm-body:focus-visible { outline: 2px solid #f6dc8e; outline-offset: 4px; }
-.gm-art { position: absolute; inset: 0; animation: gm-bob 5s ease-in-out infinite; filter: drop-shadow(0 5px 7px rgba(0, 0, 0, .6)); }
+.gm-art { position: absolute; inset: 0; animation: gm-bob 5s ease-in-out infinite; filter: drop-shadow(0 5px 7px rgba(0, 0, 0, .6)); will-change: transform; } /* composited bob: the shadow filter is not re-run each frame */
 .gm-art svg, .lore-art svg { display: block; width: 100%; height: 100%; }
-.gm-halo { position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid rgba(232, 201, 122, .75); opacity: 0; animation: gm-halo 3.8s ease-out infinite; }
+.gm-halo { position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid rgba(232, 201, 122, .75); opacity: 0; animation: gm-halo 3.8s ease-out infinite; will-change: transform, opacity; }
 .gm-body.active .gm-halo { animation-duration: 1.6s; border-color: #f6dc8e; }
 .gm-body.active .gm-art { filter: drop-shadow(0 0 10px rgba(246, 220, 142, .9)) drop-shadow(0 5px 7px rgba(0, 0, 0, .6)); }
 .gm-label {

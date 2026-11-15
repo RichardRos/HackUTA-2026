@@ -4,6 +4,7 @@ SEC EDGAR filings by where the filer is based. Keyless except Alpaca."""
 
 import csv
 import io
+import json
 import math
 import os
 import re
@@ -424,19 +425,55 @@ GRID_LONS = list(range(-180, 180, GRID_STEP))
 _GRID_CHUNK = 400  # points per request; longer coordinate lists exceed the URL limit
 
 
-def keep_last(fn):
-    """If a refresh fails (rate limit, outage), serve the last good result marked stale."""
+CACHE_DIR = os.getenv("NOSTOS_CACHE_DIR")  # a volume in Docker, so last-good results survive redeploys
+COOLDOWN = 600  # seconds to wait after a failed refresh before calling the upstream again
+
+
+def keep_last(fn=None, *, fresh: int = 0):
+    """If a refresh fails (rate limit, outage), serve the last good result marked stale and back off
+    for COOLDOWN. With CACHE_DIR set the last result is also kept on disk; one younger than `fresh`
+    seconds is served after a restart without calling upstream (Open-Meteo counts every grid point)."""
+    if fn is None:
+        return lambda f: keep_last(f, fresh=fresh)
     last: dict = {}
+    failed_at: dict = {}
+
+    def path(args):
+        import hashlib
+        return os.path.join(CACHE_DIR, f"{fn.__module__}.{fn.__name__}.{hashlib.md5(repr(args).encode()).hexdigest()[:10]}.json")
+
+    def stale(value):
+        return {**value, "stale": True} if isinstance(value, dict) else value
 
     @wraps(fn)
     def inner(*args):
+        if args not in last and CACHE_DIR:
+            try:
+                with open(path(args), encoding="utf-8") as f:
+                    last[args] = json.load(f)
+                if time.time() - os.path.getmtime(path(args)) < fresh:
+                    return last[args]
+            except (OSError, ValueError):
+                pass
+        if args in last and time.monotonic() - failed_at.get(args, -COOLDOWN) < COOLDOWN:
+            return stale(last[args])  # recently failed: don't hammer a rate-limited upstream
         try:
             last[args] = fn(*args)
-            return last[args]
         except (httpx.HTTPError, ValueError):
+            failed_at[args] = time.monotonic()
             if args in last:
-                return {**last[args], "stale": True}
+                return stale(last[args])
             raise
+        failed_at.pop(args, None)
+        if CACHE_DIR:
+            try:
+                os.makedirs(CACHE_DIR, exist_ok=True)
+                with open(path(args) + ".tmp", "w", encoding="utf-8") as f:
+                    json.dump(last[args], f, default=str)
+                os.replace(path(args) + ".tmp", path(args))
+            except OSError:
+                pass  # a read-only disk only costs the restart cache
+        return last[args]
 
     return inner
 
@@ -471,13 +508,63 @@ def _uv(speed: list, direction: list) -> tuple[list, list]:
     return u, v
 
 
+GFS_BUCKET = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
+GFS_FIELDS = {  # grid key -> (GRIB var, level, label must contain); f006 of the latest run
+    "temp": ("TMP", "2 m above ground", "6 hour fcst"), "u": ("UGRD", "10 m above ground", "6 hour fcst"),
+    "v": ("VGRD", "10 m above ground", "6 hour fcst"), "prate": ("PRATE", "surface", "0-6 hour ave"),
+    "cloud": ("TCDC", "entire atmosphere", "0-6 hour ave"),
+}
+
+
+def _gfs_grid() -> dict:
+    """The same 10° grid from NOAA GFS on AWS (keyless): the fallback when Open-Meteo's daily quota runs out."""
+    import eccodes
+    import numpy as np
+
+    now = datetime.now(timezone.utc)
+    for back in range(5, 30, 6):  # newest cycle whose 6 h step is uploaded (runs land ~4-5 h after cycle time)
+        cyc = (now - timedelta(hours=back)).replace(minute=0, second=0, microsecond=0)
+        cyc = cyc.replace(hour=cyc.hour // 6 * 6)
+        url = f"{GFS_BUCKET}/gfs.{cyc:%Y%m%d}/{cyc:%H}/atmos/gfs.t{cyc:%H}z.pgrb2.0p25.f006"
+        idx = httpx.get(url + ".idx", timeout=TIMEOUT)
+        if idx.status_code == 200:
+            break
+    else:
+        raise ValueError("no recent GFS run found")
+    lines = [l.split(":") for l in idx.text.splitlines() if l]
+    vals = {}
+    for key, (var, level, label) in GFS_FIELDS.items():
+        i = next(k for k, l in enumerate(lines) if l[3] == var and l[4] == level and label in l[5])
+        end = int(lines[i + 1][1]) - 1 if i + 1 < len(lines) else ""
+        blob = httpx.get(url, headers={"Range": f"bytes={lines[i][1]}-{end}"}, timeout=httpx.Timeout(60.0)).content
+        h = eccodes.codes_new_from_message(blob)
+        try:
+            ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
+            vals[key] = eccodes.codes_get_values(h).reshape(nj, ni)  # 0.25°: row 0 = 90°N, column 0 = 0°E
+        finally:
+            eccodes.codes_release(h)
+    pick = lambda a: [float(a[int((90 - la) * 4), int((lo % 360) * 4)]) for la in GRID_LATS for lo in GRID_LONS]  # noqa: E731
+    u, v = [round(x, 2) for x in pick(vals["u"])], [round(x, 2) for x in pick(vals["v"])]
+    return {"source": f"NOAA GFS {cyc:%Y-%m-%d %H}Z +6 h (Open-Meteo quota reached)", "fetched_at": now.isoformat(),
+            "step": GRID_STEP, "lats": GRID_LATS, "lons": GRID_LONS,
+            "temp_c": [round(t - 273.15, 1) for t in pick(vals["temp"])],
+            "precip_mm": [round(p * 3600, 2) for p in pick(vals["prate"])],  # kg/m²/s -> mm per hour
+            "cloud_pct": [round(c) for c in pick(vals["cloud"])], "wind_u": u, "wind_v": v,
+            "wind_ms": [round(float(np.hypot(a, b)), 2) for a, b in zip(u, v)]}
+
+
 @ttl_cache(4 * 3600)
-@keep_last
+@keep_last(fresh=4 * 3600)
 def weather_grid() -> dict:
     """Current temperature (°C), precipitation (mm), cloud cover (%) and 10 m wind (u/v, m/s) on a
     global grid, row-major from the southernmost row, west to east."""
-    g = _grid_fetch("https://api.open-meteo.com/v1/forecast",
-                    ["temperature_2m", "precipitation", "cloud_cover", "wind_speed_10m", "wind_direction_10m"])
+    try:
+        g = _grid_fetch("https://api.open-meteo.com/v1/forecast",
+                        ["temperature_2m", "precipitation", "cloud_cover", "wind_speed_10m", "wind_direction_10m"])
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 429:
+            raise
+        return _gfs_grid()
     u, v = _uv(g["wind_speed_10m"], g["wind_direction_10m"])
     return {"source": "Open-Meteo (NOAA GFS / ECMWF blend)", "fetched_at": datetime.now(timezone.utc).isoformat(),
             "step": GRID_STEP, "lats": GRID_LATS, "lons": GRID_LONS,
@@ -486,7 +573,7 @@ def weather_grid() -> dict:
 
 
 @ttl_cache(4 * 3600)
-@keep_last
+@keep_last(fresh=4 * 3600)
 def marine_grid() -> dict:
     """Current significant wave height (m), direction and period on the same grid; null over land.
     Wave direction is where waves come FROM; wave_u/wave_v point where they travel."""

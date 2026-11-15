@@ -301,7 +301,8 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
       if (!g) return
       const alt = g.pointOfView().altitude
       const scale = Math.max(0.72, Math.min(1.25, 1.32 - 0.3 * alt))
-      host.style.setProperty('--gm-scale', scale.toFixed(3))
+      const sc = scale.toFixed(3)
+      if (host.style.getPropertyValue('--gm-scale') !== sc) host.style.setProperty('--gm-scale', sc) // unchanged writes restyled every marker
       const near = String(alt < 0.62)
       if (host.dataset.near !== near) host.dataset.near = near
       const cam = g.camera().position
