@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { globalWeatherCountryCode, nearestCommodityBenchmarks, toWeatherEvent, type Contract, type GlobalWeather } from './events.ts'
+import { globalWeatherCountryCode, regionalCommodityBenchmarks, tradingRegion, toWeatherEvent, type Contract, type GlobalWeather } from './events.ts'
 
 const row: GlobalWeather = {
   point_id: 'glb_tokyo',
@@ -35,10 +35,19 @@ test('global weather country resolution includes Natural Earth aliases and rejec
   assert.equal(globalWeatherCountryCode('constructor'), null)
 })
 
-test('country commodity prices use the nearest mapped benchmark', () => {
-  const contracts = [{ symbol: 'BZ=F' } as Contract, { symbol: 'CL=F' } as Contract]
-  assert.deepEqual(nearestCommodityBenchmarks(contracts, { lat: 30, lng: -97 }).map((c) => c.symbol), ['CL=F'])
-  assert.deepEqual(nearestCommodityBenchmarks(contracts, { lat: 55, lng: 0 }).map((c) => c.symbol), ['BZ=F'])
-  assert.equal(nearestCommodityBenchmarks(contracts, null).length, 2)
-  assert.deepEqual(nearestCommodityBenchmarks([], { lat: 0, lng: 0 }), [])
+test('country commodity prices use the benchmark of their trading region', () => {
+  const contracts = [{ symbol: 'BZ=F' }, { symbol: 'CL=F' }, { symbol: 'DBL=F' }] as Contract[]
+  const syms = (at: { lat: number; lng: number } | null) => regionalCommodityBenchmarks(contracts, at).map((c) => c.symbol)
+  assert.deepEqual(syms({ lat: 30, lng: -97 }), ['CL=F'])
+  assert.deepEqual(syms({ lat: 55, lng: 0 }), ['BZ=F'])
+  assert.deepEqual(syms({ lat: 32.4, lng: 53.7 }), ['DBL=F']) // Iran prices off Dubai, not the North Sea
+  assert.deepEqual(syms({ lat: 24, lng: 45 }), ['DBL=F']) // Saudi Arabia
+  assert.equal(syms(null).length, 3)
+  assert.deepEqual(regionalCommodityBenchmarks([], { lat: 0, lng: 0 }), [])
+  assert.equal(tradingRegion(26.8, 30.8), 'europe-africa') // Egypt: Brent / TTF
+  assert.equal(tradingRegion(35, 105), 'gulf-asia')
+  const metals = [{ symbol: 'GC=F' }, { symbol: 'HRC=F' }] as Contract[]
+  assert.deepEqual(regionalCommodityBenchmarks(metals, { lat: 32.4, lng: 53.7 }).map((c) => c.symbol), ['GC=F']) // US-only steel dropped
+  const hogs = [{ symbol: 'HE=F' }] as Contract[]
+  assert.equal(regionalCommodityBenchmarks(hogs, { lat: 32.4, lng: 53.7 }).length, 1) // no local contract: fall back to all
 })

@@ -19,6 +19,7 @@ import config
 from score import naive_baseline
 
 SCHEMA_SQL = Path(__file__).parent / "sql" / "nostos_wx_schema.sql"
+VIEWS_SQL = Path(__file__).parent / "sql" / "nostos_wx_views.sql"
 
 
 def connect(**kw) -> psycopg.Connection:
@@ -27,7 +28,7 @@ def connect(**kw) -> psycopg.Connection:
 
 
 def apply_schema(conn):
-    sql = SCHEMA_SQL.read_text()
+    sql = SCHEMA_SQL.read_text() + ";\n" + VIEWS_SQL.read_text()
     code = re.sub(r"--[^\n]*", "", sql)
     assert not re.search(r"\b(ALTER|DROP|TRUNCATE|DELETE)\b", code, re.I), "schema file must be additive"
     for stmt in filter(str.strip, code.split(";")):

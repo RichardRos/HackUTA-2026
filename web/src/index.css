@@ -662,3 +662,12 @@ html[data-greek="true"] .splash .earth { top: 50%; }
 html[data-greek="true"] .model-card { outline: 1px solid rgba(232, 201, 122, .42); outline-offset: -7px; }
 html[data-greek="true"] .model-leads button, html[data-greek="true"] .model-table th { font-family: var(--display); font-weight: 600; letter-spacing: .12em; }
 html[data-greek="true"] .model-ours td { color: var(--accent); text-shadow: 0 0 10px rgba(232, 201, 122, .25); }
+
+/* Gemini answers rendered from Markdown (Markdown.tsx) */
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h4 { margin: 12px 0 6px; font-size: 15px; font-weight: 600; }
+.md ul, .md ol { margin: 6px 0 10px; padding-left: 20px; }
+.md li { margin: 3px 0; }
+.md code { font: 12px var(--mono); background: var(--bg); padding: 1px 4px; border-radius: 2px; }
+.md a { color: var(--accent); }
