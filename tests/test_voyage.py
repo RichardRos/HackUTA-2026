@@ -345,12 +345,12 @@ class RemoteServiceTest(unittest.TestCase):
 
         with patch.dict(os.environ, {"VOYAGE_REMOTE_URL": "https://voyage.example"}), \
                 patch.object(router, "plan", return_value={"legs": []}):
-            with patch.object(remote.httpx, "post", side_effect=httpx.ConnectError("down")):
+            with patch.object(remote._client, "post", side_effect=httpx.ConnectError("down")):
                 self.assertEqual(remote.plan(mode="ports")["computed_on"], "local")
-            with patch.object(remote.httpx, "post", return_value=httpx.Response(503)):
+            with patch.object(remote._client, "post", return_value=httpx.Response(503)):
                 self.assertEqual(remote.plan(mode="ports")["computed_on"], "local")
-            with patch.object(remote.httpx, "post", return_value=httpx.Response(200, json={"legs": [1]})):
+            with patch.object(remote._client, "post", return_value=httpx.Response(200, json={"legs": [1]})):
                 self.assertEqual(remote.plan(mode="ports"), {"legs": [1], "computed_on": "vultr"})
-            with patch.object(remote.httpx, "post", return_value=httpx.Response(400, json={"detail": "no sea route"})):
+            with patch.object(remote._client, "post", return_value=httpx.Response(400, json={"detail": "no sea route"})):
                 with self.assertRaisesRegex(ValueError, "no sea route"):
                     remote.plan(mode="ports")

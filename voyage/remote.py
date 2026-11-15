@@ -11,14 +11,16 @@ import os
 import httpx
 
 log = logging.getLogger("voyage")
+# One kept-alive connection: a fresh HTTPS handshake to Vultr cost ~1 s per route, a reused one ~0.07 s.
+_client = httpx.Client(timeout=httpx.Timeout(90.0, connect=5.0))
 
 
 def plan(**kw) -> dict:
     url = os.getenv("VOYAGE_REMOTE_URL", "").rstrip("/")
     if url:
         try:
-            r = httpx.post(f"{url}/plan", json=kw, timeout=httpx.Timeout(90.0, connect=5.0),
-                           headers={"Authorization": f"Bearer {os.getenv('VOYAGE_SERVICE_TOKEN', '')}"})
+            r = _client.post(f"{url}/plan", json=kw,
+                             headers={"Authorization": f"Bearer {os.getenv('VOYAGE_SERVICE_TOKEN', '')}"})
         except httpx.HTTPError as exc:
             log.warning("voyage service %s unreachable (%s); computing locally", url, exc)
         else:
