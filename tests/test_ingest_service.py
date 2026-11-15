@@ -375,3 +375,12 @@ class StaticInvariantTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class JobChecksTest(unittest.TestCase):
+    def test_every_job_has_checks_that_exist(self):
+        # A job missing here raised KeyError after each success, so it re-ran every minute and starved the rest.
+        self.assertEqual(set(service.JOB_CHECKS), set(service.JOBS))
+        for names in service.JOB_CHECKS.values():
+            for name in names:
+                self.assertIn(name, service.CHECK_MAP)

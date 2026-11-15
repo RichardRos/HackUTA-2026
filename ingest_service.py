@@ -214,6 +214,8 @@ LEGACY_CHECK = {
 
 CHECK_MAP = {spec["name"]: spec for spec in CHECKS}
 JOB_CHECKS = {
+    "grid_weather": ["grid_weather_last_success_age_seconds"],
+    "ships": ["ships_last_success_age_seconds"],
     "markets": [
         "markets_last_success_age_seconds",
         "markets_rows",
