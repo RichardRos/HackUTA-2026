@@ -26,6 +26,26 @@ class WxScoresTests(unittest.TestCase):
             wx_scores.weekly_trend(date(2026, 11, 1), date(2026, 10, 1))
         q.assert_not_called()
 
+    def test_views(self, q):
+        wx_scores.leaderboard_test(2)
+        sql, params = q.call_args.args
+        self.assertIn("nostos_wx.leaderboard_test", sql)
+        self.assertEqual(params, (2, 2))
+        wx_scores.city_accuracy()
+        self.assertIn("nostos_wx.city_accuracy", q.call_args.args[0])
+        wx_scores.city_timeline("new_york")
+        sql, params = q.call_args.args
+        self.assertIn("nostos_wx.city_timeline", sql)
+        self.assertEqual(params, ("new_york",))
+
+    def test_view_bad_input(self, q):
+        for bad in ("Austin", "austin;drop", "", "a" * 41):
+            with self.assertRaises(ValueError):
+                wx_scores.city_timeline(bad)
+        with self.assertRaises(ValueError):
+            wx_scores.leaderboard_test(0)
+        q.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

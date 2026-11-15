@@ -5,6 +5,7 @@ import { RedirectToSignIn, Show, SignInButton, UserButton } from '@clerk/react'
 import Splash from './Splash'
 import World from './World'
 import Search from './Search'
+import ModelScores from './ModelScores'
 
 function readGreekMode() {
   try {
@@ -42,6 +43,7 @@ export default function App() {
         <nav aria-label="Main">
           <NavLink to="/world">World</NavLink>
           <NavLink to="/search">Search</NavLink>
+          <NavLink to="/model">Model</NavLink>
         </nav>
         <div className="nav-end">
           <button
@@ -79,6 +81,7 @@ export default function App() {
           />
           <Route path="/world" element={<Protected><World greekMode={greekMode} /></Protected>} />
           <Route path="/search" element={<Protected><Search /></Protected>} />
+          <Route path="/model" element={<Protected><ModelScores /></Protected>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

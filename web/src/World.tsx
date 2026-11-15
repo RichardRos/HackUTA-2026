@@ -417,7 +417,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
         </FocusPanel>
       )}
 
-      <Assistant key={onScreen?.topic ?? 'global'} topic={onScreen?.topic} context={onScreen?.context.slice(0, 2000)} />
+      <Assistant key={`chat:${onScreen?.topic ?? ''}`} topic={onScreen?.topic} context={onScreen?.context.slice(0, 2000)} />
     </div>
   )
 }
