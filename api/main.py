@@ -42,8 +42,16 @@ _verifier = JWTVerifier(
 ) if CLERK_DOMAIN else None
 
 
+# Local test image only (compose.dev.yaml): every request counts as user "dev". Never set in production.
+DEV_AUTH_BYPASS = os.getenv("DEV_AUTH_BYPASS") == "1"
+if DEV_AUTH_BYPASS:
+    logging.getLogger("uvicorn.error").warning("DEV_AUTH_BYPASS=1: sign-in is disabled; local testing only")
+
+
 async def require_user(authorization: Annotated[str | None, Header()] = None) -> str:
     """Verify the Clerk session token the web app sends as a bearer token."""
+    if DEV_AUTH_BYPASS:
+        return "dev"
     if _verifier is None:
         raise HTTPException(503, "CLERK_DOMAIN is not set")
     scheme, _, token = (authorization or "").partition(" ")
@@ -376,6 +384,7 @@ if (WEB_DIST / "index.html").is_file():
     @app.get("/", include_in_schema=False)
     @app.get("/world", include_in_schema=False)
     @app.get("/search", include_in_schema=False)
+    @app.get("/model", include_in_schema=False)
     def web_app():
         return FileResponse(WEB_DIST / "index.html")
 

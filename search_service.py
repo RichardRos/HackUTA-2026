@@ -1,7 +1,6 @@
 """Internal Gemini-driven TimescaleDB search. Not registered with the MCP server."""
 
 import json
-from datetime import datetime, timezone
 from typing import Annotated
 
 from pglast import ast, parse_sql
@@ -173,7 +172,7 @@ Request:
         generated = GeneratedQuery.model_validate(gemini_json(
             prompt, GeneratedQuery.model_json_schema(), "response_json_schema"
         ))
-    except ValidationError as exc:
+    except ValidationError:
         raise RuntimeError("Gemini returned an invalid query plan") from None
     sql = _validate_select(generated.sql)
     rows = _query(

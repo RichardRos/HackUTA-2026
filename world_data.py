@@ -16,6 +16,8 @@ from functools import wraps
 
 import httpx
 
+from db_read import read_query, write_query
+
 TIMEOUT = httpx.Timeout(15.0)
 
 
@@ -39,6 +41,82 @@ def ttl_cache(seconds: int):
             return value
 
         inner.cache_clear = store.clear  # type: ignore[attr-defined]
+        return inner
+
+    return deco
+
+
+
+RETRY_AFTER = 600  # after a failed refresh, serve the last good value this long before calling upstream again
+DB_CACHE = os.getenv("NOSTOS_DB_CACHE") == "1"  # set for the API container; tests and scripts stay memory-only
+
+
+def stored(ttl: int, max_age: int, mark_stale: bool = False):
+    """Memory + database cache for rate-limited upstream calls (table api_cache).
+
+    Fresh (younger than `ttl`) values come from memory, else from the database, so restarts and other
+    workers reuse the last fetch. One thread per key refreshes; on any failure the last good value is
+    served if younger than `max_age` (with "stale": True when `mark_stale`) and retried after
+    RETRY_AFTER. The key includes a hash of the function's code, so a changed function refetches.
+    """
+    def deco(fn):
+        import hashlib
+        import inspect
+
+        version = hashlib.md5(inspect.getsource(fn).encode()).hexdigest()[:8]
+        mem: dict = {}  # args -> (value, fetched_at epoch, retry_at epoch or None); successes only, so bounded
+        locks = [threading.Lock() for _ in range(16)]  # striped: bogus args can't grow a lock table
+
+        def usable(hit):
+            return hit and (time.time() - hit[1] < ttl or (hit[2] and time.time() < hit[2]))
+
+        def db_load(key):
+            if not DB_CACHE:
+                return None
+            try:
+                rows = read_query("SELECT value, extract(epoch FROM fetched_at) AS t FROM api_cache WHERE key = %s", (key,))
+                return (rows[0]["value"], float(rows[0]["t"])) if rows else None
+            except Exception:  # no database (tests, local scripts) or it is down: memory only
+                return None
+
+        def db_save(key, value):
+            if not DB_CACHE:
+                return
+            try:
+                write_query("INSERT INTO api_cache (key, value, fetched_at) VALUES (%s, %s::jsonb, now()) "
+                            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, fetched_at = EXCLUDED.fetched_at",
+                            (key, json.dumps(value, default=str)))
+            except Exception:
+                pass
+
+        def serve(hit):
+            stale = time.time() - hit[1] >= ttl
+            return {**hit[0], "stale": True} if stale and mark_stale and isinstance(hit[0], dict) else hit[0]
+
+        @wraps(fn)
+        def inner(*args):
+            if usable(hit := mem.get(args)):
+                return serve(hit)
+            with locks[hash(args) % len(locks)]:  # single flight: concurrent misses wait for one refresh
+                if usable(hit := mem.get(args)):
+                    return serve(hit)
+                key = f"{fn.__module__}.{fn.__name__}:{version}:{json.dumps(args, default=str)}"
+                if not hit and (saved := db_load(key)):
+                    hit = mem[args] = (saved[0], saved[1], None)
+                    if usable(hit):
+                        return hit[0]  # fetched by an earlier process within ttl: reuse for the time it has left
+                try:
+                    value = fn(*args)
+                except Exception:
+                    if hit and time.time() - hit[1] < max_age:
+                        mem[args] = hit = (hit[0], hit[1], time.time() + RETRY_AFTER)
+                        return serve(hit)
+                    raise
+                mem[args] = (value, time.time(), None)
+                db_save(key, value)
+                return value
+
+        inner.cache_clear = mem.clear  # type: ignore[attr-defined]
         return inner
 
     return deco
@@ -137,7 +215,7 @@ SOVEREIGN_YIELDS = {  # Natural Earth name -> TradingView TVC country code (ever
 EURO_AREA = {"Estonia", "Latvia", "Luxembourg", "Slovenia", "Croatia", "Cyprus", "Malta"}  # no own TVC series: euro-area curve
 
 
-@ttl_cache(1800)
+@stored(ttl=1800, max_age=24 * 3600)
 def _tv_yields() -> dict[str, list[dict]]:
     """Every TVC government bond yield in one request, grouped by country code."""
     r = httpx.post(TV_SCAN, timeout=TIMEOUT, headers={"User-Agent": "Mozilla/5.0"}, json={
@@ -302,7 +380,7 @@ def _yahoo_closes(symbol: str, days: int) -> tuple[str, list[dict]]:
     return result["meta"].get("currency", ""), closes
 
 
-@ttl_cache(900)
+@stored(ttl=900, max_age=24 * 3600)
 def commodity_futures(commodity: str, days: int = 30) -> dict:
     """Front-month futures for one commodity, one series per regional benchmark, with settlement type."""
     if commodity not in COMMODITY_FUTURES:
@@ -425,59 +503,6 @@ GRID_LONS = list(range(-180, 180, GRID_STEP))
 _GRID_CHUNK = 400  # points per request; longer coordinate lists exceed the URL limit
 
 
-CACHE_DIR = os.getenv("NOSTOS_CACHE_DIR")  # a volume in Docker, so last-good results survive redeploys
-COOLDOWN = 600  # seconds to wait after a failed refresh before calling the upstream again
-
-
-def keep_last(fn=None, *, fresh: int = 0):
-    """If a refresh fails (rate limit, outage), serve the last good result marked stale and back off
-    for COOLDOWN. With CACHE_DIR set the last result is also kept on disk; one younger than `fresh`
-    seconds is served after a restart without calling upstream (Open-Meteo counts every grid point)."""
-    if fn is None:
-        return lambda f: keep_last(f, fresh=fresh)
-    last: dict = {}
-    failed_at: dict = {}
-
-    def path(args):
-        import hashlib
-        return os.path.join(CACHE_DIR, f"{fn.__module__}.{fn.__name__}.{hashlib.md5(repr(args).encode()).hexdigest()[:10]}.json")
-
-    def stale(value):
-        return {**value, "stale": True} if isinstance(value, dict) else value
-
-    @wraps(fn)
-    def inner(*args):
-        if args not in last and CACHE_DIR:
-            try:
-                with open(path(args), encoding="utf-8") as f:
-                    last[args] = json.load(f)
-                if time.time() - os.path.getmtime(path(args)) < fresh:
-                    return last[args]
-            except (OSError, ValueError):
-                pass
-        if args in last and time.monotonic() - failed_at.get(args, -COOLDOWN) < COOLDOWN:
-            return stale(last[args])  # recently failed: don't hammer a rate-limited upstream
-        try:
-            last[args] = fn(*args)
-        except (httpx.HTTPError, ValueError):
-            failed_at[args] = time.monotonic()
-            if args in last:
-                return stale(last[args])
-            raise
-        failed_at.pop(args, None)
-        if CACHE_DIR:
-            try:
-                os.makedirs(CACHE_DIR, exist_ok=True)
-                with open(path(args) + ".tmp", "w", encoding="utf-8") as f:
-                    json.dump(last[args], f, default=str)
-                os.replace(path(args) + ".tmp", path(args))
-            except OSError:
-                pass  # a read-only disk only costs the restart cache
-        return last[args]
-
-    return inner
-
-
 def _grid_fetch(url: str, fields: list[str]) -> dict[str, list]:
     lats = [la for la in GRID_LATS for _ in GRID_LONS]
     lons = [lo for _ in GRID_LATS for lo in GRID_LONS]
@@ -534,9 +559,14 @@ def _gfs_grid() -> dict:
     lines = [l.split(":") for l in idx.text.splitlines() if l]
     vals = {}
     for key, (var, level, label) in GFS_FIELDS.items():
-        i = next(k for k, l in enumerate(lines) if l[3] == var and l[4] == level and label in l[5])
+        i = next((k for k, l in enumerate(lines) if l[3] == var and l[4] == level and label in l[5]), None)
+        if i is None:
+            raise ValueError(f"GFS run has no {var} {level}")
         end = int(lines[i + 1][1]) - 1 if i + 1 < len(lines) else ""
-        blob = httpx.get(url, headers={"Range": f"bytes={lines[i][1]}-{end}"}, timeout=httpx.Timeout(60.0)).content
+        r = httpx.get(url, headers={"Range": f"bytes={lines[i][1]}-{end}"}, timeout=httpx.Timeout(60.0))
+        if r.status_code != 206:
+            raise ValueError(f"GFS range request returned {r.status_code}")
+        blob = r.content
         h = eccodes.codes_new_from_message(blob)
         try:
             ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
@@ -553,17 +583,14 @@ def _gfs_grid() -> dict:
             "wind_ms": [round(float(np.hypot(a, b)), 2) for a, b in zip(u, v)]}
 
 
-@ttl_cache(4 * 3600)
-@keep_last(fresh=4 * 3600)
+@stored(ttl=4 * 3600, max_age=48 * 3600, mark_stale=True)
 def weather_grid() -> dict:
     """Current temperature (°C), precipitation (mm), cloud cover (%) and 10 m wind (u/v, m/s) on a
     global grid, row-major from the southernmost row, west to east."""
     try:
         g = _grid_fetch("https://api.open-meteo.com/v1/forecast",
                         ["temperature_2m", "precipitation", "cloud_cover", "wind_speed_10m", "wind_direction_10m"])
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code != 429:
-            raise
+    except httpx.HTTPError:  # quota (429) or outage: same grid from NOAA GFS
         return _gfs_grid()
     u, v = _uv(g["wind_speed_10m"], g["wind_direction_10m"])
     return {"source": "Open-Meteo (NOAA GFS / ECMWF blend)", "fetched_at": datetime.now(timezone.utc).isoformat(),
@@ -572,8 +599,7 @@ def weather_grid() -> dict:
             "wind_u": u, "wind_v": v, "wind_ms": g["wind_speed_10m"]}
 
 
-@ttl_cache(4 * 3600)
-@keep_last(fresh=4 * 3600)
+@stored(ttl=4 * 3600, max_age=48 * 3600, mark_stale=True)
 def marine_grid() -> dict:
     """Current significant wave height (m), direction and period on the same grid; null over land.
     Wave direction is where waves come FROM; wave_u/wave_v point where they travel."""

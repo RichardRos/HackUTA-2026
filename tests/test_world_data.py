@@ -81,29 +81,48 @@ class SovereignCurveTest(unittest.TestCase):
             world_data.sovereign_curve("Chad")
 
 
-class KeepLastTest(unittest.TestCase):
-    def test_disk_restart_cooldown_and_lists(self):
-        import tempfile
-        import httpx
-        calls = []
+class StoredTest(unittest.TestCase):
+    def test_fresh_stale_retry_and_max_age(self):
+        calls, fail = [], []
 
-        def make():
-            @world_data.keep_last(fresh=3600)
-            def grid():
-                calls.append(1)
-                if len(calls) > 1:
-                    raise httpx.HTTPError("429")
-                return [1, 2]
-            return grid
+        @world_data.stored(ttl=100, max_age=1000, mark_stale=True)
+        def grid():
+            calls.append(1)
+            if fail:
+                raise RuntimeError("upstream down")  # any exception, not only httpx
+            return {"v": len(calls)}
 
-        with tempfile.TemporaryDirectory() as d, patch.object(world_data, "CACHE_DIR", d):
-            self.assertEqual(make()(), [1, 2])           # fetched and saved
-            self.assertEqual(make()(), [1, 2])           # "restart": fresh copy from disk, no call
+        clock = [0.0]
+        with patch.object(world_data.time, "time", lambda: clock[0]):
+            self.assertEqual(grid(), {"v": 1})
+            clock[0] = 50
+            self.assertEqual(grid(), {"v": 1})                  # fresh: no call
             self.assertEqual(len(calls), 1)
-        with tempfile.TemporaryDirectory() as d, patch.object(world_data, "CACHE_DIR", d):
-            calls.clear()
-            stale = world_data.keep_last(lambda: (calls.append(1), {"a": 1})[1] if len(calls) < 1 else (_ for _ in ()).throw(httpx.HTTPError("429")))
-            self.assertEqual(stale(), {"a": 1})
-            self.assertEqual(stale(), {"a": 1, "stale": True})  # failure: last good, marked stale
-            stale()
-            self.assertEqual(len(calls), 1)                   # cooldown: no second upstream call
+            fail.append(1)
+            clock[0] = 150
+            self.assertEqual(grid(), {"v": 1, "stale": True})   # refresh failed: last good, marked
+            clock[0] = 300
+            grid()
+            self.assertEqual(len(calls), 2)                     # within RETRY_AFTER: upstream not called again
+            clock[0] = 150 + world_data.RETRY_AFTER + 1
+            grid()
+            self.assertEqual(len(calls), 3)                     # retry window over: tries again
+            clock[0] = 2000
+            with self.assertRaises(RuntimeError):               # older than max_age: no stale fallback
+                grid()
+
+    def test_keyed_dicts_and_lists_are_never_marked(self):
+        ok = []
+
+        @world_data.stored(ttl=1, max_age=1000)
+        def stations():
+            if ok:
+                raise RuntimeError("down")
+            ok.append(1)
+            return {"8443970": {"station": "Boston"}}
+
+        clock = [0.0]
+        with patch.object(world_data.time, "time", lambda: clock[0]):
+            stations()
+            clock[0] = 5
+            self.assertEqual(stations(), {"8443970": {"station": "Boston"}})  # no "stale" key polluting the mapping

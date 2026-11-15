@@ -6,6 +6,7 @@ RUN npm ci
 COPY web/ ./
 # Vite bakes the publishable key into the bundle at build time (it is public by design).
 ARG VITE_CLERK_PUBLISHABLE_KEY
+ARG VITE_DEV_AUTH_BYPASS=""  # "1" only in compose.dev.yaml: Clerk stub for local end-to-end tests
 RUN test -n "$VITE_CLERK_PUBLISHABLE_KEY" && npm run build
 
 FROM python:3.11-slim
@@ -21,7 +22,6 @@ COPY requirements.api.txt ./
 RUN pip install --no-cache-dir -r requirements.api.txt
 
 RUN useradd --create-home --uid 10001 app
-RUN mkdir /cache && chown app:app /cache  # named volume inherits this owner
 COPY --chown=app:app mcp_server.py markets.py news.py db_read.py world_data.py flights.py ships.py tides.py wx_scores.py ./
 COPY --chown=app:app api ./api
 COPY --from=web --chown=app:app /web/dist ./web/dist

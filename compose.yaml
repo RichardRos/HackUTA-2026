@@ -31,9 +31,7 @@ services:
     env_file: .env
     environment:
       FORWARDED_ALLOW_IPS: "*"  # trust X-Forwarded-For from cloudflared; 8000 is only bound to localhost
-      NOSTOS_CACHE_DIR: /cache  # last-good weather/tide grids survive redeploys (Open-Meteo rate limits)
-    volumes:
-      - api-cache:/cache
+      NOSTOS_DB_CACHE: "1"  # last-good upstream responses in table api_cache (Open-Meteo rate limits)
     ports:
       - "127.0.0.1:8000:8000"
     stop_grace_period: 30s
@@ -63,6 +61,3 @@ services:
       - api
     security_opt:
       - no-new-privileges:true
-
-volumes:
-  api-cache:
