@@ -28,7 +28,7 @@ COPY --chown=app:app api ./api
 COPY --chown=app:app model/world_wx.py model/blend.py model/config.py model/score.py ./model/
 COPY --chown=app:app model/data/locations.csv ./model/data/
 COPY --chown=app:app voyage ./voyage
-COPY --chown=app:app pitch/deck.pdf pitch/deck-devpost.pdf pitch/flyer.pdf ./pitch/
+COPY --chown=app:app pitch/deck.html pitch/deck-devpost.html pitch/deck.pdf pitch/deck-devpost.pdf pitch/flyer.pdf ./pitch/
 COPY --from=web --chown=app:app /web/dist ./web/dist
 
 # Speed-model artifacts: a volume shared with the voyage-train job (Vultr Object Storage when configured).
