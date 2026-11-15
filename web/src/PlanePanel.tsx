@@ -62,7 +62,7 @@ export default function PlanePanel({ hex, aircraft, onClose }: { hex: string; ai
       }
     >
       {aircraft && (
-        <Card title="Aircraft" span={2}>
+        <Card title="Aircraft">
           <dl className="facts">
             {facts.filter(([, x]) => value(x)).map(([k, x]) => <div key={k}><dt>{k}</dt><dd>{x}</dd></div>)}
           </dl>

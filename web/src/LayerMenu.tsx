@@ -1,82 +1,55 @@
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
 export type Layer = {
   id: string
   label: string
-  icon: ReactNode // small mark in the layer's own colour, also shown on the collapsed rail
-  color: string // switch colour when on
+  icon: ReactNode // small mark in the layer's own colour
+  color: string // chip outline colour when on
   on: boolean
   onChange: (on: boolean) => void
-  note?: ReactNode
-  extra?: ReactNode // controls shown under the layer while it is on
+  error?: string | null
 }
 
-const KEY = 'nostos.layers.open'
-
-function readOpen() {
-  try {
-    return localStorage.getItem(KEY) !== '0'
-  } catch {
-    return true
-  }
-}
-
-/** Collapsible layers card: switch per layer, folding to a slim icon rail. */
+/** Compact multiselect of map layers; closes with × or a click anywhere outside it. */
 export default function LayerMenu({ layers }: { layers: Layer[] }) {
-  const [open, setOpenState] = useState(readOpen)
-  const setOpen = (v: boolean) => {
-    setOpenState(v)
-    try {
-      localStorage.setItem(KEY, v ? '1' : '0')
-    } catch {
-      /* storage blocked: the menu still works, it just won't remember */
+  const [open, setOpen] = useState(true)
+  const box = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    addEventListener('pointerdown', away)
+    addEventListener('keydown', esc)
+    return () => {
+      removeEventListener('pointerdown', away)
+      removeEventListener('keydown', esc)
     }
-  }
+  }, [open])
 
   if (!open)
     return (
-      <nav className="layers rail" aria-label="Map layers">
-        <button className="rail-toggle" aria-label="Open layers menu" aria-expanded="false" onClick={() => setOpen(true)}>
-          <span aria-hidden="true">›</span>
-        </button>
-        {layers.map((l) => (
-          <button key={l.id} className={`rail-layer${l.on ? ' on' : ''}`} role="switch" aria-checked={l.on}
-            aria-label={l.label} title={l.label} onClick={() => l.onChange(!l.on)} style={{ '--layer': l.color } as CSSProperties}>
-            {l.icon}
-          </button>
-        ))}
-      </nav>
+      <button className="layers-open button" aria-expanded="false" onClick={() => setOpen(true)}>
+        Layers · {layers.filter((l) => l.on).length}/{layers.length}
+      </button>
     )
 
   return (
-    <nav className="layers" aria-label="Map layers">
+    <nav className="layers" aria-label="Map layers" ref={box}>
       <div className="layers-head">
-        <div>
-          <p className="kicker">Layers</p>
-          <p className="micro">Each one on its own</p>
-        </div>
-        <button className="rail-toggle" aria-label="Collapse layers menu" aria-expanded="true" onClick={() => setOpen(false)}>
-          <span aria-hidden="true">‹</span>
-        </button>
+        <p className="kicker">Layers</p>
+        <button className="close" aria-label="Close layers" onClick={() => setOpen(false)}>×</button>
       </div>
-      <ul>
+      <div className="layer-chips">
         {layers.map((l) => (
-          <li key={l.id} style={{ '--layer': l.color } as CSSProperties}>
-            <div className="layer-row">
-              <span className="layer-icon" aria-hidden="true">{l.icon}</span>
-              <span className="layer-text">
-                <span id={`layer-${l.id}`}>{l.label}</span>
-                {l.note && <span className="micro">{l.note}</span>}
-              </span>
-              <button className="switch" role="switch" aria-checked={l.on} aria-labelledby={`layer-${l.id}`}
-                onClick={() => l.onChange(!l.on)}>
-                <span className="knob" />
-              </button>
-            </div>
-            {l.on && l.extra}
-          </li>
+          <button key={l.id} type="button" className={`layer-chip${l.on ? ' on' : ''}${l.error ? ' failed' : ''}`}
+            aria-pressed={l.on} title={l.error ?? undefined} onClick={() => l.onChange(!l.on)}
+            style={{ '--layer': l.color } as CSSProperties}>
+            <span className="layer-icon" aria-hidden="true">{l.icon}</span>
+            {l.label}
+            {l.error && <span className="sr-only">: {l.error}</span>}
+          </button>
         ))}
-      </ul>
+      </div>
     </nav>
   )
 }

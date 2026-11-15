@@ -16,6 +16,7 @@ const LAND = '#1a272d'
 const LINE = '#2d3d43'
 const ACCENT = '#7bf1b1'
 const OCEAN = new MeshPhongMaterial({ color: '#0e1820', specular: '#000000', shininess: 0 })
+const DEEP_ALTITUDE = 0.55 // zoomed in this far, a click means a region rather than the whole country
 const GREEK_PALETTE = { land: '#ded0bc', line: '#8ca1aa', accent: '#e8c97a', ocean: '#102f46', hover: '#c45c3e' }
 const RENDERER = { antialias: true, alpha: true, powerPreference: 'high-performance' as const }
 
@@ -50,7 +51,7 @@ type Props = {
   events?: SignalEvent[]
   selected?: SignalEvent | null
   onSelect?: (e: SignalEvent) => void
-  onCountry?: (name: string, at?: { lat: number; lng: number }) => void
+  onCountry?: (name: string, at?: { lat: number; lng: number }, deep?: boolean) => void
   ships?: ShipDot[]
   onShip?: (mmsi: number) => void
   planes?: PlaneDot[]
@@ -130,6 +131,7 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     controls.autoRotate = ambient && !matchMedia('(prefers-reduced-motion: reduce)').matches
     controls.autoRotateSpeed = 0.35
     controls.enabled = !ambient
+    controls.minDistance = 101 // globe radius is 100: let users zoom down to regional level
     g.pointOfView(ambient ? { lat: 30, lng: 140, altitude: 1.6 } : { lat: 37, lng: -97, altitude: 1.6 })
   }, [ambient, ready])
 
@@ -138,7 +140,8 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   useEffect(() => {
     if (!ready || ambient) return
     const [lat, lng] = focusKey ? focusKey.split(',').map(Number) : [37, -97]
-    globe.current?.pointOfView({ lat, lng, altitude: focusKey ? 2.2 : 1.6 }, 800)
+    const now = globe.current?.pointOfView().altitude ?? 2.2
+    globe.current?.pointOfView({ lat, lng, altitude: focusKey ? (now <= DEEP_ALTITUDE ? now : 2.2) : 1.6 }, 800) // keep a deep zoom
   }, [focusKey, ready, ambient])
 
   const pip = useCallback((d: object) => {
@@ -183,7 +186,8 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
     onCountryRef.current = onCountry
   })
   const onClick = useCallback(
-    (d: object, _e: MouseEvent, at: { lat: number; lng: number }) => onCountryRef.current?.((d as Country).properties.name, at),
+    (d: object, _e: MouseEvent, at: { lat: number; lng: number }) =>
+      onCountryRef.current?.((d as Country).properties.name, at, (globe.current?.pointOfView().altitude ?? 9) <= DEEP_ALTITUDE),
     [],
   )
   const onShipRef = useRef(onShip)

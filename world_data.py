@@ -6,6 +6,7 @@ import csv
 import io
 import math
 import os
+import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -40,6 +41,26 @@ def ttl_cache(seconds: int):
         return inner
 
     return deco
+
+
+# --- Reverse geocoding (OpenStreetMap Nominatim, no key) ----------------------------------------
+
+PLACE_KEYS = ("city", "town", "village", "municipality", "county", "state_district", "state", "region", "province", "country")
+
+
+@ttl_cache(24 * 3600)
+def reverse_geocode(lat: float, lon: float) -> dict:
+    """Nominatim address parts for a point, e.g. {"city": "Lyon", "state": "Auvergne-Rhône-Alpes", ...}."""
+    r = httpx.get("https://nominatim.openstreetmap.org/reverse", timeout=TIMEOUT,
+                  params={"lat": round(lat, 3), "lon": round(lon, 3), "format": "jsonv2", "addressdetails": 1, "zoom": 10},
+                  headers={"User-Agent": "nostos-dev research tool"})  # Nominatim policy requires a real UA
+    r.raise_for_status()
+    return r.json().get("address") or {}
+
+
+def local_places(address: dict) -> list[str]:
+    """Place names from a Nominatim address, most specific first, ending with the country."""
+    return list(dict.fromkeys(address[k] for k in PLACE_KEYS if address.get(k)))
 
 
 # --- Treasury par yield curve (treasury.gov, daily, no key) -----------------------------------
@@ -95,6 +116,73 @@ def treasury_curve() -> dict:
             if r.get("2 Yr") and r.get("10 Yr")
         ],
     }
+
+
+# --- Government bond yields worldwide (TradingView TVC scanner, keyless) ----------------------
+
+TV_SCAN = "https://scanner.tradingview.com/global/scan"
+SOVEREIGN_YIELDS = {  # Natural Earth name -> TradingView TVC country code (every country TVC covers)
+    "Australia": "AU", "Austria": "AT", "Belgium": "BE", "Brazil": "BR", "Canada": "CA", "Chile": "CL",
+    "China": "CN", "Colombia": "CO", "Czechia": "CZ", "Denmark": "DK", "Finland": "FI", "France": "FR",
+    "Germany": "DE", "Greece": "GR", "Hong Kong": "HK", "Hungary": "HU", "Iceland": "IS",
+    "India": "IN", "Indonesia": "ID", "Ireland": "IE", "Israel": "IL", "Italy": "IT", "Japan": "JP",
+    "Lithuania": "LT", "Malaysia": "MY", "Mexico": "MX", "Netherlands": "NL", "New Zealand": "NZ",
+    "Norway": "NO", "Peru": "PE", "Philippines": "PH", "Poland": "PL", "Portugal": "PT",
+    "Romania": "RO", "Russia": "RU", "Singapore": "SG", "Slovakia": "SK", "South Africa": "ZA",
+    "South Korea": "KR", "Spain": "ES", "Sweden": "SE", "Switzerland": "CH", "Taiwan": "TW",
+    "Thailand": "TH", "Turkey": "TR", "Ukraine": "UA", "United Kingdom": "GB",
+    "United States of America": "US", "Vietnam": "VN",
+}
+EURO_AREA = {"Estonia", "Latvia", "Luxembourg", "Slovenia", "Croatia", "Cyprus", "Malta"}  # no own TVC series: euro-area curve
+
+
+@ttl_cache(1800)
+def _tv_yields() -> dict[str, list[dict]]:
+    """Every TVC government bond yield in one request, grouped by country code."""
+    r = httpx.post(TV_SCAN, timeout=TIMEOUT, headers={"User-Agent": "Mozilla/5.0"}, json={
+        "filter": [{"left": "exchange", "operation": "equal", "right": "TVC"},
+                   {"left": "description", "operation": "match", "right": "Government Bonds Yield"}],
+        "columns": ["description", "close", "Perf.1M"], "range": [0, 2000]})
+    r.raise_for_status()
+    out: dict[str, list[dict]] = {}
+    for row in r.json().get("data") or []:
+        m = re.fullmatch(r"TVC:([A-Z]{2})(\d{2})(M?)Y", row["s"])
+        name, close, perf = row["d"]
+        if not m or close is None:
+            continue
+        n, months = int(m[2]), bool(m[3])
+        past = close / (1 + perf / 100) if perf is not None and abs(1 + perf / 100) > 0.05 else None
+        out.setdefault(m[1], []).append({
+            "symbol": row["s"], "name": name, "tenor": f"{n} Mo" if months else f"{n} Yr",
+            "years": n / 12 if months else n, "yield": round(close, 3),
+            "month_ago": None if past is None else round(past, 3),
+            "change_1m_bp": None if past is None else round((close - past) * 100, 1),
+        })
+    for bonds in out.values():
+        bonds.sort(key=lambda b: b["years"])
+    return out
+
+
+def sovereign_curve(country: str) -> dict:
+    """A country's government yield curve now and about a month ago (from TradingView's 1-month
+    change), plus each bond. Euro members without their own series get the euro-area curve."""
+    code = SOVEREIGN_YIELDS.get(country) or ("EU" if country in EURO_AREA else None)
+    bonds = _tv_yields().get(code or "", [])
+    if not bonds:
+        raise ValueError(f"No government bond yields for {country}")
+    today = date.today()
+    return {
+        "source": "TradingView government bond yields" + (" (euro-area curve)" if code == "EU" else ""),
+        "as_of": today.isoformat(),
+        "curve": [{"tenor": b["tenor"], "years": b["years"], "yield": b["yield"]} for b in bonds],
+        "month_ago": {"as_of": (today - timedelta(days=30)).isoformat(), "curve": [
+            {"tenor": b["tenor"], "years": b["years"], "yield": b["month_ago"]} for b in bonds if b["month_ago"] is not None]},
+        "bonds": bonds,
+    }
+
+
+def has_sovereign_yields(country: str) -> bool:
+    return country in SOVEREIGN_YIELDS or country in EURO_AREA
 
 
 # --- Treasury ETF prices by maturity bucket (Alpaca market data) ------------------------------

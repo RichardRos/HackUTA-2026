@@ -108,7 +108,7 @@ export default function CommodityPanel({ commodity, onClose }: { commodity: Comm
         </>
       }
     >
-      <Card title="Front-month benchmarks" span={2}>
+      <Card title="Front-month benchmarks">
         {futures.loading && <p className="muted">Loading benchmark prices…</p>}
         {futures.error && <p className="error" role="alert">Benchmark prices unavailable.</p>}
         {f && !contracts.length && <p className="muted">No benchmark prices available.</p>}
@@ -140,13 +140,13 @@ export default function CommodityPanel({ commodity, onClose }: { commodity: Comm
           </>
         )}
       </Card>
-      <Card title="Related funds · 30 days" span={1}>
+      <Card title="Related funds · 30 days">
         {etfs.loading && <p className="muted">Loading related funds…</p>}
         {etfs.error && <p className="error" role="alert">{etfs.error}</p>}
         {etfs.data && !funds.length && <p className="muted">No related fund price history available.</p>}
         {!!funds.length && <EtfTrends funds={funds} />}
       </Card>
-      <Card title="Kalshi markets" span={2}>
+      <Card title="Kalshi markets">
         {markets.loading && <p className="muted">Loading markets…</p>}
         {markets.error && <p className="error" role="alert">{markets.error}</p>}
         {markets.data && !markets.data.length && <p className="muted">No matching {name.toLowerCase()} markets.</p>}
@@ -168,7 +168,7 @@ export default function CommodityPanel({ commodity, onClose }: { commodity: Comm
           })}
         </ul>
       </Card>
-      <Card title={`${name} news`} span={1}>
+      <Card title={`${name} news`}>
         {news.loading && <p className="muted">Loading news…</p>}
         {news.error && <p className="error" role="alert">{news.error}</p>}
         {news.data && !news.data.length && <p className="muted">No matching coverage in the last 14 days.</p>}

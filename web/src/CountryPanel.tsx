@@ -18,7 +18,9 @@ type Rundown = {
   filings: Filings | Failed
   treasury_curve?: Curve | Failed
   treasury_etfs?: { funds: Fund[] } | Failed
+  bonds?: Bond[] | Failed
 }
+type Bond = { symbol: string; name: string; tenor: string; yield: number; change_1m_bp: number | null }
 type Editorial = { headline: string; summary: string; watch: string[] }
 
 const failed = (x: unknown): x is Failed => !!x && typeof x === 'object' && 'error' in x
@@ -229,7 +231,8 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
   const commodityMarkets = useFetch<CommodityMarket[]>(commodityMode ? `/commodities/markets?commodity=${commodity}&limit=20` : null)
   const commodityNews = useFetch<News[]>(commodityMode ? `/commodities/headlines?country=${encodeURIComponent(country)}&limit=12` : null)
   const r = rundown.data
-  const hasCurve = !!r?.treasury_curve && !failed(r.treasury_curve)
+  const local = useFetch<{ region: string | null; news: News[]; hours: number }>(!commodityMode && coordinates
+    ? `/news/local?lat=${coordinates.lat.toFixed(3)}&lon=${coordinates.lng.toFixed(3)}` : null)
   const benchmarks = nearestCommodityBenchmarks(commodityFutures.data?.contracts ?? [], coordinates)
 
   const briefing = (
@@ -302,10 +305,10 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
     <FocusPanel label={`${country} rundown`} kicker={commodityMode ? 'Commodity briefing' : 'Country briefing'} title={country}
       hero={briefing}
       aside={commodityMode ? commodityMarketList : markets} onClose={onClose}>
-      {!commodityMode && rundown.loading && <Card span={4}><p className="muted">Loading sources…</p></Card>}
-      {!commodityMode && rundown.error && <Card span={4}><p className="error" role="alert">{rundown.error}</p></Card>}
+      {!commodityMode && rundown.loading && <Card><p className="muted">Loading sources…</p></Card>}
+      {!commodityMode && rundown.error && <Card><p className="error" role="alert">{rundown.error}</p></Card>}
       {commodityMode ? (
-        <Card title="Commodity news" span={2}>
+        <Card title="Commodity news">
           {commodityNews.loading && <p className="muted">Loading headlines…</p>}
           {commodityNews.error && <p className="error" role="alert">{commodityNews.error}</p>}
           {commodityNews.data && !commodityNews.data.length && <p className="muted">No commodity headlines for {country}.</p>}
@@ -318,8 +321,26 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
             ))}
           </ul>
         </Card>
+      ) : coordinates ? (
+        <Card title={local.data?.region ? `${local.data.region} news` : 'Regional news'}>
+          {local.loading ? <p className="muted" aria-live="polite">Finding regional stories…</p>
+            : local.error ? <p className="error" role="alert">Regional news unavailable: {local.error}</p>
+              : !local.data?.news.length ? <p className="muted">No stories for {local.data?.region ?? 'this area'} or anywhere around it in the last year.</p> : (
+                <>
+                <ul className="rows">
+                  {local.data.news.map((n) => (
+                    <li key={n.id}>
+                      <a href={n.link} target="_blank" rel="noreferrer">{n.title}</a>
+                      <p className="micro">{n.source} / {day(n.published_at)}</p>
+                    </li>
+                  ))}
+                </ul>
+                {local.data.hours > 336 && <p className="micro">Nothing in the last 14 days; showing the last {local.data.hours === 2160 ? '90 days' : 'year'}.</p>}
+                </>
+              )}
+        </Card>
       ) : r && (
-        <Card title="News" span={hasCurve ? 1 : 2}>
+        <Card title="News">
           {failed(r.news) ? <p className="error">{r.news.error}</p> : !r.news.length ? <p className="muted">No WSJ or FT coverage in the last 14 days.</p> : (
             <ul className="rows">
               {r.news.map((n) => (
@@ -334,14 +355,14 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
       )}
       {commodityMode ? (
         <>
-          <Card title={coordinates ? 'Nearest benchmark prices' : 'Regional benchmark prices'} span={2}>
+          <Card title={coordinates ? 'Nearest benchmark prices' : 'Regional benchmark prices'}>
             {commodityFutures.loading && <p className="muted">Loading benchmark prices…</p>}
             {commodityFutures.error && <p className="error" role="alert">Benchmark prices unavailable: {commodityFutures.error}</p>}
             {commodityFutures.data && !benchmarks.length && <p className="muted">No mapped regional benchmarks are available for {COMMODITIES[commodity].toLowerCase()}.</p>}
             {benchmarks.map((contract) => <CommodityPriceChart key={contract.symbol} contract={contract} />)}
             {!!benchmarks.length && <p className="micro">Market futures benchmarks—not retail or local physical prices. {coordinates ? 'Nearest mapped pricing point to the selected location.' : 'Showing all available mapped regional benchmarks.'}</p>}
           </Card>
-          <Card title={`${COMMODITIES[commodity]} ETFs · 30 days`} span={2}>
+          <Card title={`${COMMODITIES[commodity]} ETFs · 30 days`}>
             {commodityEtfs.loading && <p className="muted">Loading funds…</p>}
             {commodityEtfs.error && <p className="error" role="alert">{commodityEtfs.error}</p>}
             {commodityEtfs.data && !commodityEtfs.data.funds.length && <p className="muted">No ETF data available.</p>}
@@ -351,24 +372,41 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
       ) : <WeatherCard country={country} />}
       <GovernmentAnnouncements country={country} />
       {!commodityMode && r?.treasury_curve && !failed(r.treasury_curve) && (
-        <Card title="Treasury yield curve" span={2}>
+        <Card title={country === 'United States of America' ? 'Treasury yield curve' : 'Government yield curve'}>
           <YieldCurve now={r.treasury_curve} past={r.treasury_curve.month_ago} />
           <p className="micro">Source: {r.treasury_curve.source}</p>
         </Card>
       )}
+      {!commodityMode && r?.bonds && (
+        <Card title="Government bonds">
+          {failed(r.bonds) ? <p className="muted">Bond yields unavailable: {r.bonds.error}</p> : (
+            <>
+              <ul className="rows">
+                {r.bonds.map((b) => (
+                  <li key={b.symbol}>
+                    <strong>{b.tenor}</strong> <span>{b.yield.toFixed(2)}%</span>
+                    {b.change_1m_bp !== null && <span className="micro"> {b.change_1m_bp >= 0 ? '+' : ''}{b.change_1m_bp.toFixed(0)} bp / 1M</span>}
+                  </li>
+                ))}
+              </ul>
+              <p className="micro">{r.bonds[0]?.name.replace(/\d+ (Year|Month) /, '')} · TradingView</p>
+            </>
+          )}
+        </Card>
+      )}
       {!commodityMode && r?.treasury_curve && failed(r.treasury_curve) && (
-        <Card title="Treasury yield curve" span={2}>
+        <Card title="Government yield curve">
           <p className="muted">Yield curve unavailable: {r.treasury_curve.error}</p>
         </Card>
       )}
       {!commodityMode && r?.treasury_etfs && !failed(r.treasury_etfs) && (
-        <Card title="Treasury ETFs, last month" span={2}>
+        <Card title="Treasury ETFs, last month">
           <EtfTrends funds={r.treasury_etfs.funds} />
           <p className="micro">Source: Alpaca, iShares Treasury ETFs</p>
         </Card>
       )}
       {r && (
-        <Card title="SEC filings" span={hasCurve ? 2 : 1}>
+        <Card title="SEC filings">
           {failed(r.filings) ? <p className="error">{r.filings.error}</p> : <FilingList country={country} initial={r.filings} />}
         </Card>
       )}
