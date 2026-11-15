@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { medallionSvg } from './art'
-import { greekNumeral, MONSTERS, STATIONS, type LoreEntry } from './myth'
+import { greekNumeral, inOdyssey, MONSTERS, STATIONS, type LoreEntry } from './myth'
 
 /**
  * The legend of a monster or one stop of the Odyssey, on a parchment scroll. Previous / next walk the
@@ -15,7 +15,7 @@ export default function GreekLore({ entry, onPick, onClose }: {
   const i = Math.max(0, list.findIndex((e) => e.id === entry.id))
   const prev = list[(i - 1 + list.length) % list.length]
   const next = list[(i + 1) % list.length]
-  const art = useMemo(() => (entry.kind === 'monster' ? medallionSvg(entry.id, 'card') : null), [entry])
+  const art = useMemo(() => (entry.kind === 'monster' ? medallionSvg(entry.id, 'card', inOdyssey(entry) ? 'clay' : 'royal') : null), [entry])
   const close = useRef<HTMLButtonElement>(null)
   const scroll = useRef<HTMLDivElement>(null)
   // Block bodies: newer browsers return a Promise from scroll methods, which React would take for a cleanup.
@@ -52,6 +52,7 @@ export default function GreekLore({ entry, onPick, onClose }: {
 
         {entry.kind === 'monster' && (
           <dl className="lore-facts">
+            <div><dt>Story</dt><dd>{entry.story}</dd></div>
             <div><dt>Haunt</dt><dd>{entry.place}</dd></div>
             <div><dt>Vanquished by</dt><dd>{entry.foe}</dd></div>
             <div><dt>Sources</dt><dd>{entry.source}</dd></div>

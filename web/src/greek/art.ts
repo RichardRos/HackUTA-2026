@@ -387,11 +387,23 @@ function ringMeander(cx: number, cy: number, r0: number, r1v: number, units: num
     + `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linejoin="miter"/>`
 }
 
+/** Roundel colourways: Odyssey monsters keep the red-figure clay; monsters from other myths are royal blue. */
+export type Glaze = 'clay' | 'royal'
+export const ROYAL = '#4169e1'
+export const ROYAL_DK = '#25439f'
+const BANDS: Record<Glaze, [string, string]> = { clay: ['#eb9560', '#b85d2c'], royal: ['#7095f0', '#2443a8'] }
+
+/** The figure in its colourway: the clay and dilute-glaze tones are swapped, gold, ivory and black stay. */
+function figure(id: MonsterId, glaze: Glaze) {
+  const svg = FIGURES[id]()
+  return glaze === 'clay' ? svg : svg.split(CLAY).join(ROYAL).split(CLAY_DK).join(ROYAL_DK)
+}
+
 /**
  * A kylix tondo: the painted roundel inside a drinking cup. `marker` is the compact globe version
- * (clay band with a dot border); `card` adds a full meander ring for the lore card.
+ * (coloured band with a dot border); `card` adds a full meander ring for the lore card.
  */
-export function medallionSvg(id: MonsterId, size: 'marker' | 'card' = 'marker') {
+export function medallionSvg(id: MonsterId, size: 'marker' | 'card' = 'marker', glaze: Glaze = 'clay') {
   const n = ++uid
   const card = size === 'card'
   const R = card ? 60 : 50 // half the viewBox
@@ -405,14 +417,14 @@ export function medallionSvg(id: MonsterId, size: 'marker' | 'card' = 'marker') 
   }).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${R * 2} ${R * 2}" aria-hidden="true" focusable="false">`
     + `<defs><radialGradient id="gz${n}" cx="42%" cy="36%" r="70%"><stop offset="0" stop-color="#3a271c"/><stop offset=".55" stop-color="${GLAZE}"/><stop offset="1" stop-color="#0b0705"/></radialGradient>`
-    + `<radialGradient id="cl${n}" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="#eb9560"/><stop offset="1" stop-color="#b85d2c"/></radialGradient>`
+    + `<radialGradient id="cl${n}" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="${BANDS[glaze][0]}"/><stop offset="1" stop-color="${BANDS[glaze][1]}"/></radialGradient>`
     + `<clipPath id="cp${n}"><circle cx="${R}" cy="${R}" r="${field}"/></clipPath></defs>`
     + `<circle cx="${R}" cy="${R}" r="${band1 + 0.6}" fill="url(#cl${n})"/>`
     + (card ? ringMeander(R, R, band0 + 1.6, band1 - 1.8, 22, GLAZE, 1.5) : dots)
     + `<circle cx="${R}" cy="${R}" r="${band1 + 0.6}" fill="none" stroke="${GOLD}" stroke-width="${card ? 1.4 : 1.2}"/>`
     + `<circle cx="${R}" cy="${R}" r="${band0}" fill="${GLAZE}"/>`
     + `<circle cx="${R}" cy="${R}" r="${field}" fill="url(#gz${n})"/>`
-    + `<g clip-path="url(#cp${n})"><g transform="translate(${R} ${R}) scale(${r1(k * 100) / 100}) translate(-50 -50)">${FIGURES[id]()}</g></g>`
+    + `<g clip-path="url(#cp${n})"><g transform="translate(${R} ${R}) scale(${r1(k * 100) / 100}) translate(-50 -50)">${figure(id, glaze)}</g></g>`
     // glaze gloss
     + `<path d="M${R - field * 0.72} ${R - field * 0.28} A${field * 0.8} ${field * 0.8} 0 0 1 ${R - field * 0.12} ${R - field * 0.78}" fill="none" stroke="#fff" stroke-opacity=".16" stroke-width="${card ? 3.2 : 3}" stroke-linecap="round"/>`
     + '</svg>'

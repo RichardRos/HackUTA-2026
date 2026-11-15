@@ -385,7 +385,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
         <h1>{greekMode ? 'The wine-dark sea' : activeView === 'world' ? 'World view' : 'Commodities'}</h1>
         <p className="muted">
           {greekMode
-            ? 'Live ships sail as triremes, tankers as longships. Click a monster or a stop on Odysseus’ voyage for its legend. Wind & Surf shows wind and wave height.'
+            ? 'Live ships sail as triremes, tankers as longships. Clay roundels are the monsters Odysseus met; royal blue ones come from other myths. Click one, or a stop on his voyage, for its legend.'
             : activeView === 'world'
               ? 'Click any country for its briefing, news, filings and markets.'
               : 'Click a country for commodity markets, funds and nearby benchmark prices.'}

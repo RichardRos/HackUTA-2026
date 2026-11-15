@@ -6,7 +6,7 @@ import atlas from 'world-atlas/countries-110m.json'
 import type { SignalEvent } from './events'
 import { medallionSvg } from './greek/art'
 import { blackShipTexture, greekOceanTexture, odysseusFix, SeaCreatureLayer } from './greek/globe'
-import { ANCIENT_LANDS, greekNumeral, isGreekMarker, MONSTERS, STATIONS, VOYAGE, type GreekMarker, type LoreEntry } from './greek/myth'
+import { ANCIENT_LANDS, greekNumeral, inOdyssey, isGreekMarker, MONSTERS, STATIONS, VOYAGE, type GreekMarker, type LoreEntry } from './greek/myth'
 import { CARGO_PLANE_STYLE, LONGSHIP_STYLE, PLANE_STYLE, SHIP_STYLE, TRIREME_STYLE, ShipLayer, type LayerStyle, type MovingShip } from './shipLayer'
 import { TideLayer, type TideStation } from './tideLayer'
 import { WeatherOverlay, weatherTexture, type MarineGrid, type WeatherGrid } from './weatherLayer'
@@ -25,7 +25,14 @@ const HELLAS = '300' // Greece, gilded on the Greek-mode map
 const RENDERER = { antialias: true, alpha: true, powerPreference: 'high-performance' as const }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const COUNTRIES = (feature(atlas as any, (atlas as any).objects.countries) as any).features as Country[]
+const toCountries = (topo: any) => (feature(topo, topo.objects.countries) as any).features as Country[]
+const COUNTRIES = toCountries(atlas)
+/**
+ * Greek mode zooms into the Aegean, where the 1:110m outlines lose the islands and blur the coasts,
+ * so it swaps in the 1:50m map, loaded on demand so the standard view stays light.
+ */
+let detailedMap: Promise<Country[]> | null = null
+const loadDetailedMap = () => (detailedMap ??= import('world-atlas/countries-50m.json').then((m) => toCountries(m.default)))
 
 /** Blend `hex` over the land colour by `t` (0..1). */
 function tint(hex: string, t: number, base = LAND) {
@@ -97,7 +104,7 @@ function greekElement(d: GreekMarker, interactive: boolean, onPick: (d: GreekMar
   }
   // All text here comes from the static myth tables, never from the API.
   body.innerHTML = d.kind === 'monster'
-    ? `<span class="gm-halo"></span><span class="gm-art" style="animation-delay:-${((d.lat * 7.3) % 5).toFixed(2)}s">${medallionSvg(d.id)}</span>`
+    ? `<span class="gm-halo"></span><span class="gm-art" style="animation-delay:-${((d.lat * 7.3) % 5).toFixed(2)}s">${medallionSvg(d.id, 'marker', inOdyssey(d) ? 'clay' : 'royal')}</span>`
       + `<span class="gm-label"><b>${d.name}</b><i lang="grc">${d.greek}</i></span>`
     : `<span class="gm-dot"></span><span class="gm-label"><b><span lang="grc">${greekNumeral(d.n)}</span> ${d.name}</b><i lang="grc">${d.greek}</i></span>`
   el.append(body)
@@ -160,6 +167,16 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   const globe = useRef<GlobeMethods | undefined>(undefined)
   const [box, { width, height }] = useSize()
   const [hover, setHover] = useState<Country | null>(null)
+  const [detailed, setDetailed] = useState<Country[] | null>(null)
+  useEffect(() => {
+    if (!greekMode || ambient || detailed) return
+    let live = true
+    loadDetailedMap().then((c) => live && setDetailed(c), () => {}) // on failure the 1:110m map simply stays
+    return () => {
+      live = false
+    }
+  }, [greekMode, ambient, detailed])
+  const countries = greekMode && !ambient && detailed ? detailed : COUNTRIES
   // The temperature/rain texture only under the Weather layer, and never in Greek mode, which is sea-only:
   // its Wind & Surf overlay still uses `weather`, but the land temperature texture is skipped.
   const texture = useMemo(() => weather && temperature && !greekMode ? weatherTexture(weather) : null, [weather, temperature, greekMode])
@@ -212,7 +229,7 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
   useEffect(() => {
     const g = globe.current
     if (!g || !ready) return
-    g.renderer().setPixelRatio(Math.min(devicePixelRatio, 1.5)) // retina at 2-3x costs 2-4x the fill rate
+    g.renderer().setPixelRatio(Math.min(devicePixelRatio, 2)) // sharp on 2x screens; 3x would cost over twice the fill rate for little visible gain
     const controls = g.controls()
     controls.autoRotate = ambient && !matchMedia('(prefers-reduced-motion: reduce)').matches
     controls.autoRotateSpeed = 0.35
@@ -506,7 +523,7 @@ export default function Earth({ events = NO_EVENTS, selected, onSelect, onCountr
           globeMaterial={mapMaterial}
           atmosphereColor={greekMode ? GREEK_PALETTE.accent : '#4a6670'}
           atmosphereAltitude={greekMode ? 0.13 : 0.08}
-          polygonsData={COUNTRIES}
+          polygonsData={countries}
           polygonCapColor={capColor}
           polygonCapMaterial={texture ? weatherCapMaterial : undefined}
           polygonSideColor={noSides}
