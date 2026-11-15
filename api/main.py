@@ -278,7 +278,7 @@ def tides_overview():
 
 
 @rest.get("/tides/{station_id}")
-def tide_station(station_id: Annotated[str, Path(pattern=r"^\d{7}$")]):
+def tide_station(station_id: Annotated[str, Path(pattern=r"^(\d{7}|om-[a-z0-9-]{1,48})$")]):
     return _run(tools.get_tide_station, station_id)
 
 
