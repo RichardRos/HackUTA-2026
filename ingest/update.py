@@ -15,6 +15,8 @@ Parts (--only / --skip take a comma list):
   gfs           NOAA GFS 0.25° global model (runs 00/06/12/18Z, ~3.5-5 h to post):
                 each fully posted run from the last --gfs-hours that isn't stored,
                 leads --gfs-leads, at every point (US stations + global cities)
+  ships         AIS (aisstream.io): listen --ships-seconds, upsert vessels and store one
+                position per vessel (needs AISSTREAM_API_KEY and db/14_ships.sql)
 
 Each part runs independently; exit code 1 if any part failed.
 Scheduled by .github/workflows/ingest.yml (or cron; see ingest/README.md).
@@ -31,9 +33,10 @@ import common as c
 import eia
 import noaa_nbm
 import noaa_nws
+import ships_ais
 import weather
 
-PARTS = ("eia", "subba", "nbm", "nws_forecast", "nws_obs", "gfs")
+PARTS = ("eia", "subba", "nbm", "nws_forecast", "nws_obs", "gfs", "ships")
 
 
 def threaded(items, fn, workers):
@@ -170,6 +173,7 @@ def main() -> None:
     p.add_argument("--gfs-fields", default="core", choices=("core", "all"))
     p.add_argument("--gfs-workers", type=int, default=16, help="parallel range reads per GFS run")
     p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--ships-seconds", type=int, default=90, help="how long to listen to AIS per run")
     args = p.parse_args()
 
     parts = [x for x in args.only.split(",") if x and x not in args.skip.split(",")]
@@ -196,6 +200,7 @@ def main() -> None:
             "nws_forecast": lambda: update_nws_forecast(conn, now, args, points),
             "nws_obs": lambda: update_nws_obs(conn, now, args, points),
             "gfs": lambda: update_gfs(conn, now, args),
+            "ships": lambda: ships_ais.update(conn, args.ships_seconds),
         }
         for name in PARTS:
             if name not in parts:

@@ -1,6 +1,7 @@
 import json
 import os
 import unittest
+import urllib.parse
 from pathlib import Path
 from unittest import mock
 
@@ -201,6 +202,52 @@ class AdapterTests(unittest.TestCase):
         parsed = markets.parse_kalshi_market(event, malformed)
         self.assertIsNone(parsed["outcomes"][0]["price"])
         self.assertIsNone(parsed["outcomes"][1]["price"])
+
+
+class KalshiCommodityIngestTests(unittest.TestCase):
+    def test_commodity_series_discovery_uses_category_index(self):
+        payload = {"series": [{"ticker": "KXCATTLE"}, {"ticker": "KXGOLD"}, {"ticker": "KXCATTLE"}, {}]}
+        with mock.patch.object(
+            markets.urllib.request, "urlopen", return_value=_FakeResponse(payload)
+        ) as fake_urlopen:
+            tickers = markets.kalshi_commodity_series()
+
+        self.assertEqual(tickers, ["KXCATTLE", "KXGOLD"])
+        request = fake_urlopen.call_args.args[0]
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+        self.assertTrue(request.full_url.startswith(markets.KALSHI_SERIES_URL))
+        self.assertEqual(query["category"], ["Commodities"])
+        self.assertEqual(query["limit"], ["200"])
+
+    def test_fetch_kalshi_adds_a_query_per_commodity_series(self):
+        def respond(request, **_):
+            if request.full_url.startswith(markets.KALSHI_SERIES_URL):
+                return _FakeResponse({"series": [{"ticker": "KXCATTLE"}]})
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+            ticker = (query.get("series_ticker") or ["GENERIC"])[0]
+            return _FakeResponse({"events": [{
+                "event_ticker": f"EV-{ticker}",
+                "series_ticker": ticker,
+                "category": "Commodities" if ticker != "GENERIC" else "Weather",
+                "markets": [{"ticker": f"T-{ticker}", "status": "active"}],
+            }]})
+
+        with mock.patch.object(
+            markets.urllib.request, "urlopen", side_effect=respond
+        ) as fake_urlopen:
+            fetched = list(markets.fetch_kalshi())
+
+        self.assertEqual([m["market_id"] for m in fetched], ["T-GENERIC", "T-KXCATTLE"])
+        self.assertEqual(fetched[-1]["category"], "Commodities")
+        event_queries = [
+            urllib.parse.parse_qs(urllib.parse.urlparse(call.args[0].full_url).query)
+            for call in fake_urlopen.call_args_list
+            if call.args[0].full_url.startswith(markets.KALSHI_EVENTS_URL)
+        ]
+        self.assertEqual(
+            [q.get("series_ticker", [None])[0] for q in event_queries], [None, "KXCATTLE"]
+        )
+        self.assertTrue(all(q["status"] == ["open"] for q in event_queries))
 
 
 if __name__ == "__main__":

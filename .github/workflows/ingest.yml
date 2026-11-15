@@ -3,6 +3,7 @@
 # Repo secrets (Settings -> Secrets and variables -> Actions):
 #   TIMESCALE_SERVICE_URL  required
 #   EIA_API_KEY            required (free: https://www.eia.gov/opendata/register.php)
+#   AISSTREAM_API_KEY      required for the ships part (free: https://aisstream.io)
 #   NWS_USER_AGENT         optional, e.g. "nostos-ingest (team-contact@example.com)";
 #                          api.weather.gov asks clients to identify themselves
 #   PGPASSWORD             required unless TIMESCALE_SERVICE_URL contains the password
@@ -36,3 +37,4 @@ jobs:
           PGPASSWORD: ${{ secrets.PGPASSWORD || secrets.TIMESCALE_PASSWORD || secrets.TIMESCALE_SERVICE_PASSWORD }}
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
           NWS_USER_AGENT: ${{ secrets.NWS_USER_AGENT }}
+          AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}

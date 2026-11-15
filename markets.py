@@ -15,9 +15,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 KALSHI_EVENTS_URL = "https://api.elections.kalshi.com/trade-api/v2/events"
+KALSHI_SERIES_URL = "https://api.elections.kalshi.com/trade-api/v2/series"
+KALSHI_COMMODITY_CATEGORY = "Commodities"
 POLYMARKET_MARKETS_URL = "https://gamma-api.polymarket.com/markets/keyset"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-GEMINI_MODEL_DEFAULT = "gemini-2.5-flash"
+GEMINI_MODEL_DEFAULT = "gemini-3.5-flash-lite"  # 2.5 models are closed to new API keys
 HTTP_TIMEOUT = 30
 
 # "no" and "not" are deliberately absent: dropping them flips market meaning.
@@ -315,10 +317,11 @@ def parse_polymarket_market(market: dict) -> dict | None:
     }
 
 
-def fetch_kalshi(pages: int = 1):
+def _kalshi_markets(pages: int = 1, **filters):
+    """Yield parsed markets from one cursor-paginated Kalshi /events query."""
     cursor = None
     for _ in range(max(1, pages)):
-        params = {"status": "open", "with_nested_markets": "true", "limit": 200}
+        params = {"status": "open", "with_nested_markets": "true", "limit": 200, **filters}
         if cursor:
             params["cursor"] = cursor
         data = _http_json(KALSHI_EVENTS_URL, params=params)
@@ -335,6 +338,28 @@ def fetch_kalshi(pages: int = 1):
         if not next_cursor or next_cursor == cursor:
             break
         cursor = next_cursor
+
+
+def kalshi_commodity_series() -> list[str]:
+    """Series tickers under Kalshi's Commodities category, from the category index."""
+    data = _http_json(
+        KALSHI_SERIES_URL, params={"category": KALSHI_COMMODITY_CATEGORY, "limit": 200}
+    )
+    if not isinstance(data, dict):
+        raise RuntimeError("Kalshi returned an unexpected response")
+    tickers: list[str] = []
+    for series in data.get("series") or []:
+        ticker = _clean_text(series.get("ticker")) if isinstance(series, dict) else None
+        if ticker and ticker not in tickers:
+            tickers.append(ticker)
+    return tickers
+
+
+def fetch_kalshi(pages: int = 1):
+    yield from _kalshi_markets(pages)
+    # The generic /events feed omits most commodity series, so query each one explicitly.
+    for ticker in kalshi_commodity_series():
+        yield from _kalshi_markets(pages, series_ticker=ticker)
 
 
 def fetch_polymarket(pages: int = 1):

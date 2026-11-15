@@ -6,6 +6,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
-    proxy: { '/api': process.env.API_URL ?? 'http://localhost:8000' },
+    proxy: {
+      '/api': process.env.API_URL ?? 'http://localhost:8000',
+      '/ws': { target: process.env.API_URL ?? 'http://localhost:8000', ws: true },
+    },
   },
 })

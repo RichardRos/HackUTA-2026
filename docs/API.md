@@ -118,11 +118,11 @@ All filters are optional except the containing `filters` object:
 
 | Filter | Type | Behavior |
 |---|---|---|
-| `query` | string ≤200 | Keywords over normalized market questions and news titles/summaries. |
+| `query` | string ≤200 | Any normalized keyword over market questions and news titles/summaries; news also matches inferred topic tags. |
 | `instrument` | string ≤200 | Matches market ID, event ID, slug, `platform:market_id`, normalized question, and news text. Unqualified names/fragments work. |
 | `region` | string | EIA balancing-authority code. Required when explicitly requesting forecast, accuracy, grid, fuel, or weather. |
 | `sources` | array | Any of `forecast`, `accuracy`, `grid`, `fuel`, `weather`, `markets`, `news`. Defaults to all seven with a region, otherwise markets+news. |
-| `start`, `end` | timestamps | Explicit valid/published/scraped range, depending on source. If omitted for grid/fuel/weather, defaults to a 24-hour window. |
+| `start`, `end` | timestamps | Explicit valid/published/market-close range, depending on source. If omitted for grid/fuel/weather, defaults to a 24-hour window. |
 | `as_of` | timestamp | Knowledge cutoff for grid, fuel, and weather; prevents lookahead. |
 | `series` | array | Any of `D`, `DF`, `NG`, `TI`; defaults to all grid series. |
 | `fuels` | array of strings | EIA fuel codes; defaults to all fuels. |
@@ -138,7 +138,7 @@ All filters are optional except the containing `filters` object:
 Time behavior:
 
 - With no explicit range, grid/fuel/weather use the trailing 24 hours. If only `start` is supplied, `end = start + 24 hours`; if only `end` is supplied, `start = end - 24 hours`.
-- Explicit market times filter `scraped_at`; explicit news times filter `published_at`.
+- Explicit market times filter `close_time`; explicit news times filter `published_at`.
 - Forecast and accuracy are current summary surfaces and do not use `start`/`end`.
 - Text wildcards supplied by callers are escaped and matched literally.
 
@@ -190,6 +190,18 @@ Response adds `interpretation` to the normal `search_data` response:
 - `interpretation: "keyword_fallback"` means Gemini was unavailable or returned invalid filters; the request became a transparent keyword search over markets+news.
 - `GEMINI_API_KEY` and optional `GEMINI_MODEL` configure interpretation. The fallback does not require a key.
 - This is **natural-language-to-filter search**, not embedding/vector similarity. Add pgvector and an embedding/backfill pipeline later if semantic similarity over article/rule text becomes necessary.
+
+REST `GET /api/search` runs `semantic_search` when `q` is set and a filter-only `search_data` otherwise. Both responses add a top-level `summary`, built by `summarize_search_results` from at most 8 linked news rows and 6 linked market rows:
+
+```json
+{"summary": {
+  "text": "One plain factual summary, about 100 words.",
+  "sources": [{"id": 1, "kind": "news", "title": "Gas prices rise",
+               "url": "https://example.com/gas", "source": "ft"}]
+}}
+```
+
+`summary` is `null` when no returned row has both a title and a URL (Gemini is not called), and `{"error": "AI summary is unavailable right now."}` when Gemini or citation validation fails; the search results are unaffected either way. Titles and URLs always come from the returned rows, never from the model, and only cited rows are listed.
 
 ## One-call region snapshot
 
@@ -353,7 +365,7 @@ Row fields: `ba_code`, `source`, `valid_time`, `temp_f`, `dewpoint_f`, `cdh_65`,
 {"country": "JP"}
 ```
 
-One row per world city (`weather_points.purpose = 'global'`, ~100 metros outside the US) with the next-hour NOAA GFS 0.25° forecast. `country` (ISO 3166-1 alpha-2) is optional; `as_of` gives the forecast that was public at that instant. Row fields: `point_id`, `name`, `country`, `latitude`, `longitude`, `valid_time`, `issued_at`, `temp_f`, `apparent_temp_f`, `dewpoint_f`, `rh_pct`, `cloud_cover_pct`, `wind_10m_mph`, `wind_gust_mph`, `wind_dir_deg`, `precip_in`, `snow_in`, `shortwave_wm2`. REST: `GET /api/weather/global?country=JP`.
+One row per world city (`weather_points.purpose = 'global'`) with the next-hour NOAA GFS 0.25° forecast. `country` (ISO 3166-1 alpha-2) is optional; `as_of` gives the forecast that was public at that instant. Row fields: `point_id`, `name`, `country`, `latitude`, `longitude`, `valid_time`, `issued_at`, `temp_f`, `apparent_temp_f`, `dewpoint_f`, `rh_pct`, `cloud_cover_pct`, `wind_10m_mph`, `wind_gust_mph`, `wind_dir_deg`, `precip_in`, `snow_in`, `shortwave_wm2`. REST: `GET /api/weather/global?country=JP`.
 
 ### `get_global_weather_forecast`
 

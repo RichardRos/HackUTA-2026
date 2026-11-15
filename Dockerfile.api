@@ -1,3 +1,13 @@
+# One image: the React app (built here) plus the API and MCP server, all on port 8000.
+FROM node:22-alpine AS web
+WORKDIR /web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+COPY web/ ./
+# Vite bakes the publishable key into the bundle at build time (it is public by design).
+ARG VITE_CLERK_PUBLISHABLE_KEY
+RUN test -n "$VITE_CLERK_PUBLISHABLE_KEY" && npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -11,8 +21,9 @@ COPY requirements.api.txt ./
 RUN pip install --no-cache-dir -r requirements.api.txt
 
 RUN useradd --create-home --uid 10001 app
-COPY --chown=app:app mcp_server.py markets.py db_read.py ./
+COPY --chown=app:app mcp_server.py markets.py news.py db_read.py world_data.py flights.py ships.py wx_scores.py ./
 COPY --chown=app:app api ./api
+COPY --from=web --chown=app:app /web/dist ./web/dist
 
 USER app
 EXPOSE 8000

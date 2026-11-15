@@ -1,4 +1,4 @@
-"""Global weather points: major metro areas / load centres outside the US.
+"""Global weather points: major metro areas / load centres.
 
 Stored in weather_points with purpose 'global', no BA, point_id 'glb_<slug>'.
 Only the GFS (global) source covers them; NBM / NWS / GHCNh stay US-only.
@@ -99,7 +99,27 @@ GLOBAL_CITIES = [
     ("accra", "Accra", "GH", 5.60, -0.19),
     ("luanda", "Luanda", "AO", -8.84, 13.23),
     ("dar_es_salaam", "Dar es Salaam", "TZ", -6.79, 39.21),
-    # Americas (outside the US)
+    # Americas
+    ("new_york", "New York", "US", 40.71, -74.01),
+    ("los_angeles", "Los Angeles", "US", 34.05, -118.24),
+    ("chicago", "Chicago", "US", 41.88, -87.63),
+    ("houston", "Houston", "US", 29.76, -95.37),
+    ("phoenix", "Phoenix", "US", 33.45, -112.07),
+    ("philadelphia", "Philadelphia", "US", 39.95, -75.17),
+    ("san_antonio", "San Antonio", "US", 29.42, -98.49),
+    ("san_diego", "San Diego", "US", 32.72, -117.16),
+    ("dallas", "Dallas", "US", 32.78, -96.80),
+    ("san_jose", "San Jose", "US", 37.34, -121.89),
+    ("austin", "Austin", "US", 30.27, -97.74),
+    ("san_francisco", "San Francisco", "US", 37.77, -122.42),
+    ("seattle", "Seattle", "US", 47.61, -122.33),
+    ("denver", "Denver", "US", 39.74, -104.99),
+    ("washington", "Washington", "US", 38.91, -77.04),
+    ("boston", "Boston", "US", 42.36, -71.06),
+    ("atlanta", "Atlanta", "US", 33.75, -84.39),
+    ("miami", "Miami", "US", 25.76, -80.19),
+    ("minneapolis", "Minneapolis", "US", 44.98, -93.27),
+    ("detroit", "Detroit", "US", 42.33, -83.05),
     ("toronto", "Toronto", "CA", 43.65, -79.38),
     ("montreal", "Montreal", "CA", 45.50, -73.57),
     ("vancouver", "Vancouver", "CA", 49.28, -123.12),

@@ -24,9 +24,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:?set VITE_CLERK_PUBLISHABLE_KEY in .env}
     restart: unless-stopped
     init: true
     env_file: .env
+    environment:
+      FORWARDED_ALLOW_IPS: "*"  # trust X-Forwarded-For from cloudflared; 8000 is only bound to localhost
     ports:
       - "127.0.0.1:8000:8000"
     stop_grace_period: 30s
@@ -42,3 +46,17 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+
+  # Exposes api at PUBLIC_BASE_URL with no router port forwarding (works behind CGNAT).
+  # Route in Cloudflare Zero Trust > Tunnels: trynostos.biz -> HTTP api:8000 (dashboard at /, MCP at /mcp)
+  tunnel:
+    profiles: [tunnel]  # docker compose --profile tunnel up -d
+    image: cloudflare/cloudflared:2025.9.1
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - api
+    security_opt:
+      - no-new-privileges:true

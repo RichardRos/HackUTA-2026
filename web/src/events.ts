@@ -1,0 +1,227 @@
+export type Trend = 'rising' | 'easing'
+
+export type SignalEvent = {
+  id: string
+  kicker: string
+  title: string
+  value: string
+  valueLabel: string
+  body: string
+  sources: string
+  trend: Trend
+  lat: number
+  lng: number
+  country: string // ISO 3166 numeric, matches world-atlas feature ids; empty when unknown
+  query: string
+  commodity?: Commodity // set on commodity futures markers
+}
+
+/** A row from GET /api/signals (mcp_server.get_region_signals). */
+export type RegionSignal = {
+  ba_code: string
+  name: string | null
+  hours: number
+  surprise_pct: number
+  lat: number
+  lng: number
+  as_of: string
+}
+
+const US = '840' // every EIA balancing authority is in the US
+
+export function toEvent(r: RegionSignal): SignalEvent {
+  const above = r.surprise_pct > 0
+  const name = r.name ?? r.ba_code
+  return {
+    id: r.ba_code,
+    kicker: `Grid / ${r.ba_code}`,
+    title: name,
+    value: `${above ? '+' : ''}${r.surprise_pct}%`,
+    valueLabel: 'Demand vs EIA forecast',
+    body: `Actual demand ran ${Math.abs(r.surprise_pct)}% ${above ? 'above' : 'below'} EIA's day-ahead forecast over the ${r.hours} hours to ${new Date(r.as_of).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.`,
+    sources: 'EIA-930 hourly demand / day-ahead forecast',
+    trend: above ? 'rising' : 'easing',
+    lat: r.lat,
+    lng: r.lng,
+    country: US,
+    query: name,
+  }
+}
+
+/** A row from GET /api/weather/global (next-hour NOAA GFS city forecast). */
+export type GlobalWeather = {
+  point_id: string
+  name: string
+  country: string
+  latitude: number | null
+  longitude: number | null
+  valid_time: string | null
+  issued_at: string | null
+  temp_f: number | null
+  apparent_temp_f: number | null
+  wind_10m_mph: number | null
+}
+
+/** Natural Earth country names for countries represented by the global-city weather feed. */
+export const GLOBAL_WEATHER_COUNTRY_CODES: Record<string, string> = {
+  'united arab emirates': 'AE', angola: 'AO', argentina: 'AR', austria: 'AT', australia: 'AU',
+  bangladesh: 'BD', belgium: 'BE', brazil: 'BR', canada: 'CA',
+  'dem. rep. congo': 'CD', 'democratic republic of the congo': 'CD',
+  switzerland: 'CH', chile: 'CL', china: 'CN', colombia: 'CO', cuba: 'CU', czechia: 'CZ',
+  germany: 'DE', denmark: 'DK', algeria: 'DZ', egypt: 'EG', spain: 'ES', ethiopia: 'ET',
+  finland: 'FI', france: 'FR', 'united kingdom': 'GB', ghana: 'GH', greece: 'GR',
+  'hong kong': 'HK', hungary: 'HU', indonesia: 'ID', ireland: 'IE', israel: 'IL', india: 'IN',
+  iraq: 'IQ', iran: 'IR', italy: 'IT', japan: 'JP', kenya: 'KE', 'south korea': 'KR',
+  kuwait: 'KW', kazakhstan: 'KZ', morocco: 'MA', mexico: 'MX', malaysia: 'MY', nigeria: 'NG',
+  netherlands: 'NL', norway: 'NO', 'new zealand': 'NZ', peru: 'PE', philippines: 'PH',
+  pakistan: 'PK', poland: 'PL', portugal: 'PT', qatar: 'QA', romania: 'RO', russia: 'RU',
+  'saudi arabia': 'SA', sweden: 'SE', singapore: 'SG', thailand: 'TH', turkey: 'TR',
+  taiwan: 'TW', ukraine: 'UA', uzbekistan: 'UZ', venezuela: 'VE', vietnam: 'VN',
+  'south africa': 'ZA', tanzania: 'TZ',
+  'united states of america': 'US', 'united states': 'US',
+}
+
+export function globalWeatherCountryCode(country: string): string | null {
+  const name = country.trim().toLowerCase()
+  return Object.prototype.hasOwnProperty.call(GLOBAL_WEATHER_COUNTRY_CODES, name) ? GLOBAL_WEATHER_COUNTRY_CODES[name] : null
+}
+
+const COUNTRY_IDS: Record<string, string> = {
+  AE: '784', AO: '024', AR: '032', AT: '040', AU: '036', BD: '050', BE: '056', BR: '076', CA: '124', CD: '180', CH: '756',
+  CL: '152', CN: '156', CO: '170', CU: '192', CZ: '203', DE: '276', DK: '208', DZ: '012', EG: '818', ES: '724',
+  ET: '231', FI: '246', FR: '250', GB: '826', GH: '288', GR: '300', HK: '344', HU: '348', ID: '360', IE: '372',
+  IL: '376', IN: '356', IQ: '368', IR: '364', IT: '380', JP: '392', KE: '404', KR: '410', KW: '414', KZ: '398',
+  MA: '504', MX: '484', MY: '458', NG: '566', NL: '528', NO: '578', NZ: '554', PE: '604', PH: '608', PK: '586',
+  PL: '616', PT: '620', QA: '634', RO: '642', RU: '643', SA: '682', SE: '752', SG: '702', TH: '764', TR: '792',
+  TW: '158', UA: '804', US: '840', UZ: '860', VE: '862', VN: '704', ZA: '710', TZ: '834',
+}
+
+const weatherTime = (value: string | null) => {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+export function toWeatherEvent(r: GlobalWeather): SignalEvent | null {
+  const temp = r.temp_f
+  if (
+    typeof temp !== 'number' || !Number.isFinite(temp) ||
+    typeof r.latitude !== 'number' || !Number.isFinite(r.latitude) || r.latitude < -90 || r.latitude > 90 ||
+    typeof r.longitude !== 'number' || !Number.isFinite(r.longitude) || r.longitude < -180 || r.longitude > 180
+  ) return null
+
+  const apparent = typeof r.apparent_temp_f === 'number' && Number.isFinite(r.apparent_temp_f) ? r.apparent_temp_f : null
+  const warmer = apparent !== null && apparent > temp
+  const valid = weatherTime(r.valid_time)
+  const issued = weatherTime(r.issued_at)
+  const wind = typeof r.wind_10m_mph === 'number' && Number.isFinite(r.wind_10m_mph) ? r.wind_10m_mph : null
+  const context = [
+    valid && `Forecast for ${valid}`,
+    issued && `issued ${issued}`,
+    apparent !== null && `feels like ${Math.round(apparent)}°F`,
+    wind !== null && `wind ${Math.round(wind)} mph`,
+  ].filter(Boolean).join(' · ')
+  return {
+    id: r.point_id,
+    kicker: `Weather / ${r.country}`,
+    title: r.name,
+    value: `${Math.round(temp)}°F`,
+    valueLabel: 'NOAA GFS forecast temperature',
+    body: context || 'Next-hour NOAA GFS city forecast.',
+    sources: 'NOAA Global Forecast System (GFS)',
+    trend: warmer ? 'rising' : 'easing',
+    lat: r.latitude,
+    lng: r.longitude,
+    country: COUNTRY_IDS[r.country.toUpperCase()] ?? '',
+    query: `${r.name} weather`,
+  }
+}
+
+/** A contract from GET /api/commodities/{commodity} (world_data.commodity_futures). */
+export type Contract = {
+  symbol: string
+  name: string
+  region: string
+  settlement: 'cash' | 'physical'
+  unit: string
+  price: number | null
+  closes: { date: string; close: number }[]
+  change_pct: number | null
+}
+
+export const COMMODITIES = {
+  oil: 'Oil',
+  'natural-gas': 'Natural gas',
+  metals: 'Metals',
+  agriculture: 'Agriculture',
+  livestock: 'Livestock',
+} as const
+export type Commodity = keyof typeof COMMODITIES
+
+// Where each benchmark prices: its delivery point, or the exchange for metals, grains, softs and livestock.
+// shortcut: New York and Chicago exchanges are nudged apart so their markers don't stack; move to real clustering if more are added.
+const SITES: Record<string, { place: string; lat: number; lng: number; country: string }> = {
+  'BZ=F': { place: 'North Sea', lat: 57.5, lng: 1.5, country: '826' },
+  'CL=F': { place: 'Cushing, Oklahoma', lat: 35.98, lng: -96.77, country: '840' },
+  'TTF=F': { place: 'Netherlands', lat: 52.37, lng: 4.9, country: '528' },
+  'NG=F': { place: 'Henry Hub, Louisiana', lat: 29.96, lng: -92.03, country: '840' },
+  'GC=F': { place: 'COMEX, New York', lat: 40.71, lng: -74.01, country: '840' },
+  'SI=F': { place: 'COMEX, New York', lat: 40.71, lng: -74.01, country: '840' },
+  'HG=F': { place: 'COMEX, New York', lat: 40.71, lng: -74.01, country: '840' },
+  'KC=F': { place: 'ICE, New York', lat: 38.9, lng: -76.5, country: '840' },
+  'CC=F': { place: 'ICE, New York', lat: 38.9, lng: -76.5, country: '840' },
+  'SB=F': { place: 'ICE, New York', lat: 38.9, lng: -76.5, country: '840' },
+  'ZW=F': { place: 'CBOT, Chicago', lat: 41.88, lng: -87.63, country: '840' },
+  'ZC=F': { place: 'CBOT, Chicago', lat: 41.88, lng: -87.63, country: '840' },
+  'HE=F': { place: 'CME, Chicago', lat: 40.2, lng: -90.5, country: '840' },
+  'GF=F': { place: 'CME, Chicago', lat: 40.2, lng: -90.5, country: '840' },
+  'LE=F': { place: 'CME, Chicago', lat: 40.2, lng: -90.5, country: '840' },
+}
+
+/** Use known pricing locations to show the nearest benchmark, or all mapped benchmarks without a clicked location. */
+export function nearestCommodityBenchmarks(contracts: Contract[], location: { lat: number; lng: number } | null): Contract[] {
+  const mapped = contracts.filter((contract) => SITES[contract.symbol])
+  if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return mapped
+  const distance = (contract: Contract) => {
+    const site = SITES[contract.symbol]
+    const radians = (degrees: number) => degrees * Math.PI / 180
+    const lat1 = radians(location.lat)
+    const lat2 = radians(site.lat)
+    const dLat = lat2 - lat1
+    const dLng = radians(site.lng - location.lng)
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+    return 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  }
+  const nearest = Math.min(...mapped.map(distance))
+  return mapped.filter((contract) => Math.abs(distance(contract) - nearest) < 1e-9)
+}
+
+/** One marker per commodity per pricing location, valued at the average 30-day change there. */
+export function toCommodityEvents(commodity: Commodity, contracts: Contract[]): SignalEvent[] {
+  const groups = new Map<string, Contract[]>()
+  for (const c of contracts) {
+    if (!SITES[c.symbol] || c.change_pct === null) continue
+    const place = SITES[c.symbol].place
+    groups.set(place, [...(groups.get(place) ?? []), c])
+  }
+  return [...groups.values()].map((group) => {
+    const site = SITES[group[0].symbol]
+    const avg = group.reduce((sum, c) => sum + (c.change_pct ?? 0), 0) / group.length
+    const names = group.map((c) => c.name).join(' / ')
+    return {
+      id: `commodity:${commodity}:${site.place}`,
+      kicker: names,
+      title: `${COMMODITIES[commodity]} / ${site.place}`,
+      value: `${avg >= 0 ? '+' : ''}${avg.toFixed(1)}%`,
+      valueLabel: '30-day futures change',
+      body: `${names} front-month futures, ${group.map((c) => (c.settlement === 'cash' ? 'cash-settled' : 'physical delivery')).join(' / ')}.`,
+      sources: 'Yahoo Finance front-month futures',
+      trend: avg >= 0 ? 'rising' : 'easing',
+      lat: site.lat,
+      lng: site.lng,
+      country: site.country,
+      query: `${COMMODITIES[commodity]} futures`,
+      commodity,
+    }
+  })
+}

@@ -13,3 +13,8 @@ docs
 *.md
 requirements.txt
 test_*.py
+**/node_modules
+web/dist
+web/.env*
+.taste-skill
+**/.taste-skill
