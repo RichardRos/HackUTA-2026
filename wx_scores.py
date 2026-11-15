@@ -124,3 +124,21 @@ def city_timeline(location: str) -> list[dict]:
         "FROM nostos_wx.city_timeline WHERE location = %s ORDER BY climate_date",
         (_location(location),),
     )
+
+
+def forecast_tomorrow() -> list[dict]:
+    """Latest live run per city (model/predict_live.py): Nostos, NBM and the 5 raw models."""
+    return read_query(
+        "WITH latest AS (SELECT location, max(issued_at) AS issued_at "
+        "FROM nostos_wx.live_forecasts GROUP BY location) "
+        "SELECT f.location, l.station_id, l.latitude, l.longitude, f.climate_date, f.issued_at, "
+        "round(max(f.high_f) FILTER (WHERE f.model = 'nostos')::numeric, 1)::float8 AS nostos_f, "
+        "round(max(f.high_f) FILTER (WHERE f.model = %s)::numeric, 1)::float8 AS nbm_corrected_f, "
+        "round(max(f.high_f) FILTER (WHERE f.model = %s)::numeric, 1)::float8 AS nbm_f, "
+        "jsonb_object_agg(f.model, round(f.high_f::numeric, 1)) FILTER (WHERE f.role = 'input') AS models "
+        "FROM nostos_wx.live_forecasts f JOIN latest USING (location, issued_at) "
+        "JOIN nostos_wx.locations l ON l.location = f.location "
+        "GROUP BY f.location, l.station_id, l.latitude, l.longitude, f.climate_date, f.issued_at "
+        "ORDER BY f.location",
+        NBM_MODELS,
+    )

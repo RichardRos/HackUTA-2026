@@ -17,8 +17,8 @@ def get_year(station_id: str, year: int) -> list[dict]:
         time.sleep(3*2**attempt)
     raise RuntimeError(f"IEM request failed to fetch {station_id} {year} ")
 
-def fetch_obs(row: pd.Series) -> pd.DataFrame:
-    start = pd.Timestamp(config.START_DATE).date()
+def fetch_obs(row: pd.Series, start_date: pd.Timestamp) -> pd.DataFrame:
+    start = pd.Timestamp(start_date).date()
     end = pd.Timestamp(config.END_DATE).date()
 
     records = []
@@ -48,22 +48,23 @@ def fetch_obs(row: pd.Series) -> pd.DataFrame:
 
 
 def main():
+    out = config.DATA_DIR / "obs_daily_high.parquet"
+    cache = pd.read_parquet(out) if out.exists() and not config.FULL_REFRESH else None
+    start = config.incremental_start(pd.to_datetime(cache["climate_date"]).max() if cache is not None else None)
+
     frames = []
     for _, row in config.load_locations().iterrows():
-        print(f"Fetching observations for {row['location']} ({row['station_id']})")
-        frames.append(fetch_obs(row))
+        print(f"Fetching observations for {row['location']} ({row['station_id']}) {start:%Y-%m-%d}..{config.END_DATE}")
+        frames.append(fetch_obs(row, start))
 
-    df = pd.concat(frames, ignore_index=True)
-    out = config.DATA_DIR / "obs_daily_high.parquet"
+    new = pd.concat(frames, ignore_index=True)
+    df = config.merge_cache(cache, new, ["location", "climate_date"], new["climate_date"])
     df.to_parquet(out, index=False)
 
-    print(f"saved {len(df):,} rows -> {out}")
-    print(df.head(10))
-    print(df.groupby("location")["high_f"].describe())
+    print(f"fetched {len(new):,} rows, cache now {len(df):,} rows "
+          f"({df['climate_date'].min()}..{df['climate_date'].max()}) -> {out}")
+    print(new.groupby("location")["climate_date"].max().value_counts().rename("cities by last day"))
 
 
 if __name__ == "__main__":
     main()
-
-
-
