@@ -58,6 +58,15 @@ docker compose --profile train run --rm voyage-train                      # AIS 
 docker compose --profile train run --rm voyage-train python -m voyage.train --no-ais   # prior only
 ```
 
+From any machine, on a throwaway instance (created, trained, deleted; needs `VULTR_API_KEY` in `.env`
+with that machine's IP allowed under Account > API, plus the bucket above):
+
+```bash
+python -m voyage.vultr --dry-run                 # show the cloud-init script, create nothing
+python -m voyage.vultr                           # ~10 min on vc2-4c-8gb: log printed, instance deleted
+python -m voyage.vultr -- --no-ais --n-jobs 4    # args after -- go to voyage.train
+```
+
 Weekly, via cron on the instance:
 
 ```

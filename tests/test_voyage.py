@@ -283,3 +283,20 @@ class VoyageApiTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VultrJobTest(unittest.TestCase):
+    def test_user_data_sends_only_training_env_and_always_powers_off(self):
+        import base64
+        import re
+
+        from voyage import vultr
+
+        script = vultr.user_data({"VULTR_API_KEY": "account-key", "TIMESCALE_SERVICE_URL": "postgres://x",
+                                  "UNRELATED": "y"}, "nostos-train-t", ["--no-ais"])
+        sent = base64.b64decode(re.search(r"echo (\S+) \| base64 -d > .env", script).group(1)).decode()
+        self.assertEqual(sent, "TIMESCALE_SERVICE_URL=postgres://x\n")
+        self.assertNotIn("account-key", script)
+        self.assertIn("trap 'poweroff' EXIT", script)
+        self.assertIn("python -m voyage.train --no-ais", script)
+        self.assertIn("voyage/logs/nostos-train-t.log", script)
