@@ -317,7 +317,7 @@ class OnceLockTests(unittest.TestCase):
 class StaticInvariantTests(unittest.TestCase):
     def test_jobs_are_fixed_whitelist(self):
         self.assertEqual(
-            list(service.JOBS), ["markets", "news", "noaa", "commodities", "shipping"]
+            list(service.JOBS), ["markets", "news", "noaa", "commodities", "shipping", "ships"]
         )
         expected = {
             "markets": (300, 900),
@@ -325,6 +325,7 @@ class StaticInvariantTests(unittest.TestCase):
             "noaa": (3600, 900),
             "commodities": (21_600, 1800),
             "shipping": (3600, 900),
+            "ships": (3600, 600),
         }
         for name, (interval, timeout) in expected.items():
             self.assertEqual(service.JOBS[name]["interval"], interval)

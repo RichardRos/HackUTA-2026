@@ -59,6 +59,11 @@ JOBS = {
         "interval": 3600,
         "timeout": 900,
     },
+    "ships": {  # AIS snapshot (aisstream.io): one fix per vessel per hour, the voyage model's training rows
+        "command": [sys.executable, "ingest/ships_ais.py"],
+        "interval": 3600,
+        "timeout": 600,
+    },
 }
 
 

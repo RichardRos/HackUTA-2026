@@ -3,7 +3,6 @@
 # Repo secrets (Settings -> Secrets and variables -> Actions):
 #   TIMESCALE_SERVICE_URL  required
 #   EIA_API_KEY            required (free: https://www.eia.gov/opendata/register.php)
-#   AISSTREAM_API_KEY      required for the ships part (free: https://aisstream.io)
 #   NWS_USER_AGENT         optional, e.g. "nostos-ingest (team-contact@example.com)";
 #                          api.weather.gov asks clients to identify themselves
 #   PGPASSWORD             required unless TIMESCALE_SERVICE_URL contains the password
@@ -31,10 +30,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python ingest/update.py
+      - run: python ingest/update.py --skip ships  # ships: the ingest container's hourly job (compose.yaml)
         env:
           TIMESCALE_SERVICE_URL: ${{ secrets.TIMESCALE_SERVICE_URL }}
           PGPASSWORD: ${{ secrets.PGPASSWORD || secrets.TIMESCALE_PASSWORD || secrets.TIMESCALE_SERVICE_PASSWORD }}
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
           NWS_USER_AGENT: ${{ secrets.NWS_USER_AGENT }}
-          AISSTREAM_API_KEY: ${{ secrets.AISSTREAM_API_KEY }}

@@ -73,6 +73,10 @@ Weekly, via cron on the instance:
 0 3 * * 1  cd /root/HackUTA-2026 && docker compose --profile train run --rm voyage-train >> /var/log/voyage-train.log 2>&1
 ```
 
+AIS rows come from the ingest container's hourly `ships` job (aisstream.io). To backfill a month at
+once, load the Danish Maritime Authority archive (~100 s and ~8k training rows per day):
+`python ingest/ais_dk.py --start 2026-10-14 --end 2026-11-11`.
+
 The job reads `ship_positions` from `TIMESCALE_SERVICE_URL` (read-only) and fetches the past waves,
 wind and currents for each fix from Open-Meteo. Open-Meteo keeps about 3 months of past data, which
 matches the 90-day AIS retention. The log prints cross-validated R², the base-learner weights, the

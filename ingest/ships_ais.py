@@ -83,4 +83,10 @@ def update(conn, seconds: int) -> None:
         raise RuntimeError("AISSTREAM_API_KEY is not set (or --skip ships)")
     tracker = listen(seconds)
     v, p = store(conn, tracker)
-    c.log(f"ships: {tracker.messages} AIS messages in {seconds}s, {v} vessels upserted, {p} positions stored")
+    c.log(f"ships: {tracker.messages} AIS messages in {seconds}s, {v} vessels upserted, {p} rows stored")
+
+
+if __name__ == "__main__":  # the ingest container's hourly "ships" job
+    c.load_env(quiet=True)
+    with c.connect() as conn:
+        update(conn, int(os.getenv("SHIPS_SECONDS", "90")))
