@@ -33,6 +33,12 @@ python db/run_sql.py -c "SELECT * FROM scoreboard_summary"
 | `05_api.sql` | Latest-run index and `latest_forecast` view |
 | `06_national_noaa.sql` | National EIA (`balancing_authorities.kind`, `grid_subba_hourly`, `eia_subbas`), NOAA weather columns + `extra` JSONB, station ids on `weather_points`, widened integrity checks. Supersedes the Open-Meteo notes in `01_schema.sql`. |
 | `07_assistant.sql` | `assistant_requests` queue for the website assistant (see `api/README.md`) |
+| `08_prediction_markets.sql` | Normalized Kalshi/Polymarket markets and outcomes |
+| `09_rss_feeds.sql` | WSJ + FT RSS feeds: `rss_feeds` (latest raw XML) and `rss_articles` (normalized, idempotent) |
+| `10_open_observations.sql` | NOAA/FRED/CFTC/port-condition/freight-rate time-series observations |
+| `11_ingest_monitoring.sql` | Ingest runs, retries/DLQ, data checks, and service health |
+| `12_news_tags.sql` | `rss_articles.tags` (feed sections + keyword topics, GIN index) |
+| `13_global_gfs.sql` | Global weather: `weather_points` can hold world-city points (`purpose = 'global'`, no BA, `country`), GFS source (`gfs_0p25`), and `point_forecast_asof()` for non-BA points. |
 | `99_clear_fake.sql` | Deletes the fake data. **Run it BEFORE the real backfill.** |
 
 `run_sql.py` runs each statement with autocommit, like `psql -f`. Continuous aggregates can't be created inside a transaction.

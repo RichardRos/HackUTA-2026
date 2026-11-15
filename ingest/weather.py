@@ -15,6 +15,7 @@ import psycopg
 import common as c
 import noaa_ghcnh
 import noaa_nws
+from global_points import global_points
 from stations import all_points
 
 FC_VALUES = ["temp_f", "dewpoint_f", "apparent_temp_f", "rh_pct", "cloud_cover_pct",
@@ -64,9 +65,42 @@ def sync_points(conn: psycopg.Connection) -> int:
     return len(rows)
 
 
+def sync_global_points(conn: psycopg.Connection) -> int:
+    """Upsert the global city points (ingest/global_points.py): purpose 'global', no BA."""
+    rows = [(pid, name, lat, lon, cc) for pid, name, cc, lat, lon in global_points()]
+    with conn.cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO weather_points (point_id, ba_code, name, latitude, longitude, weight, purpose, country)
+            VALUES (%s, NULL, %s, %s, %s, 0, 'global', %s)
+            ON CONFLICT (point_id) DO UPDATE SET
+                name = EXCLUDED.name, latitude = EXCLUDED.latitude,
+                longitude = EXCLUDED.longitude, country = EXCLUDED.country
+            """, rows)
+    conn.commit()
+    return len(rows)
+
+
+def has_global_schema(conn: psycopg.Connection) -> bool:
+    return conn.execute(
+        "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = 'weather_points' AND column_name = 'country')").fetchone()[0]
+
+
 def points_missing(conn: psycopg.Connection) -> bool:
     have = {r[0] for r in conn.execute("SELECT point_id FROM weather_points WHERE icao IS NOT NULL")}
     return any(p[0] not in have for p in all_points())
+
+
+def global_points_missing(conn: psycopg.Connection) -> bool:
+    have = {r[0] for r in conn.execute("SELECT point_id FROM weather_points WHERE purpose = 'global'")}
+    return any(p[0] not in have for p in global_points())
+
+
+def load_all_points(conn: psycopg.Connection) -> list[tuple[str, float, float]]:
+    """(point_id, lat, lon) for every point, US stations and global cities (for GFS)."""
+    return [tuple(r) for r in conn.execute(
+        "SELECT point_id, latitude, longitude FROM weather_points ORDER BY point_id")]
 
 
 def load_points(conn: psycopg.Connection) -> list[dict]:
@@ -158,6 +192,22 @@ def upsert_actuals(conn: psycopg.Connection, tuples: list[tuple]) -> int:
             available_at = LEAST(weather_actuals.available_at, EXCLUDED.available_at),
             ingested_at = now()
         """)
+
+
+def store_gfs_run(conn: psycopg.Connection, cycle, leads: list[int], points, which: str = "core",
+                  workers: int = 16, files=None):
+    """Fetch one GFS run at every point and insert it. Returns (issued_at, cells, rows inserted),
+    or None if NOAA hasn't posted all requested steps yet."""
+    import noaa_gfs                                       # numpy/eccodes only needed for GFS
+
+    res = noaa_gfs.fetch_run(cycle, leads, points, which=which, workers=workers, files=files)
+    if res is None:
+        return None
+    issued, cells, rows = res
+    tuples = []
+    for cell, pids in cells.items():
+        tuples += forecast_tuples(rows[cell], pids, issued, noaa_gfs.MODEL, noaa_gfs.SOURCE_API)
+    return issued, len(cells), upsert_forecasts(conn, tuples)
 
 
 def forecast_exists(conn: psycopg.Connection, model: str, issued_at) -> bool:

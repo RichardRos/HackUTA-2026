@@ -11,13 +11,19 @@ Parts (--only / --skip take a comma list):
   forecasts  NOAA NBM station bulletins from the AWS archive -> weather_forecasts
              (model nbm_nbs / nbm_nbh, issued_at = NOAA's publish time)
   actuals    NOAA NCEI GHCNh observations -> weather_actuals (source ghcnh)
+  gfs        NOAA GFS 0.25° global model from the AWS archive -> weather_forecasts
+             (model gfs_0p25) at every point: US stations + global cities.
+             Window: --gfs-start (default: 90 days before --end) -> --end.
 
 Size: NBM files are ~30 MB each (all ~9,500 stations), so forecasts cost
 ~30 MB x products x cycles per day; the default (NBS, 12z) is ~1 GB per month.
-GHCNh is ~1.5 MB per station-year. The NWS gridpoint forecast has no archive,
-so 'nws_ndfd' only builds up from ingest/update.py.
+GHCNh is ~1.5 MB per station-year. GFS reads only the fields it needs
+(~0.9 MB each): the default (12z run, leads 12-48 every 3 h, 16 fields) is
+~180 MB per day, ~16 GB for the default 90 days. The NWS gridpoint forecast has
+no archive, so 'nws_ndfd' only builds up from ingest/update.py.
 
-Run db/06_national_noaa.sql and db/99_clear_fake.sql first (the script checks).
+Run db/06_national_noaa.sql, db/13_global_gfs.sql and db/99_clear_fake.sql
+first (the script checks).
 """
 from __future__ import annotations
 
@@ -34,7 +40,7 @@ import noaa_ghcnh
 import noaa_nbm
 import weather
 
-PARTS = ("eia", "subba", "forecasts", "actuals")
+PARTS = ("eia", "subba", "forecasts", "actuals", "gfs")
 
 
 def chunks(start: datetime, end: datetime, days: int):
@@ -144,6 +150,36 @@ def backfill_actuals(conn, points, start, end, workers):
     c.log(f"GHCNh done: {total} rows")
 
 
+def backfill_gfs(conn, start, end, cycles, leads, which, workers):
+    import noaa_gfs
+
+    points = weather.load_all_points(conn)
+    c.log(f"GFS {noaa_gfs.MODEL} cycles {cycles}Z, leads {leads[0]}-{leads[-1]} ({len(leads)} steps), "
+          f"{which} fields, {len(points)} points: {start:%Y-%m-%d} -> {end:%Y-%m-%d}")
+    total, missing = 0, 0
+    day = start.replace(hour=0)
+    while day < end:
+        for h in cycles:
+            cyc = day + timedelta(hours=h)
+            if not (start <= cyc < end):
+                continue
+            try:
+                res = weather.store_gfs_run(conn, cyc, leads, points, which, workers)
+            except Exception as e:                       # one bad run shouldn't stop the backfill
+                conn.rollback()
+                c.log(f"  GFS {cyc:%Y-%m-%d %H}Z FAILED: {e}")
+                continue
+            if res is None:
+                missing += 1
+                c.log(f"  GFS {cyc:%Y-%m-%d %H}Z: not all steps in the NOAA archive, skipped")
+                continue
+            issued, cells, n = res
+            total += n
+            c.log(f"  GFS {cyc:%Y-%m-%d %H}Z: {cells} grid cells, {n:6d} new rows (issued {issued:%H:%M}Z)")
+        day += timedelta(days=1)
+    c.log(f"GFS done: {total} rows" + (f", {missing} run(s) missing" if missing else ""))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--start", default="2024-02-01", help="UTC start (default 2024-02-01)")
@@ -153,6 +189,12 @@ def main() -> None:
     p.add_argument("--eia-series", default="D,DF", help="EIA-930 types: D,DF,NG,TI (default D,DF)")
     p.add_argument("--nbm-products", default="nbs", help="nbs (3-hourly, 72 h) and/or nbh (hourly, 25 h)")
     p.add_argument("--nbm-cycles", default="12", help="UTC cycle hours per day (default 12)")
+    p.add_argument("--gfs-start", default=None, help="UTC start for GFS (default: 90 days before --end)")
+    p.add_argument("--gfs-cycles", default="12", help="GFS runs per day, UTC hours of 0,6,12,18 (default 12)")
+    p.add_argument("--gfs-leads", default="12-48/3",
+                   help="forecast hours, e.g. '12-48/3' or '1-72' (default 12-48/3)")
+    p.add_argument("--gfs-fields", default="core", choices=("core", "all"))
+    p.add_argument("--gfs-workers", type=int, default=16, help="parallel range reads per GFS run")
     p.add_argument("--eia-chunk-days", type=int, default=7)
     p.add_argument("--workers", type=int, default=4)
     args = p.parse_args()
@@ -173,10 +215,12 @@ def main() -> None:
         sys.exit("--start must be before --end")
 
     with c.connect() as conn:
-        c.require_schema_v3(conn)
+        c.require_schema_v4(conn) if "gfs" in parts else c.require_schema_v3(conn)
         c.guard_fake(conn)
         c.log(f"synced {eia.sync_respondents(conn)} EIA respondents")
         c.log(f"synced {weather.sync_points(conn)} weather points")
+        if weather.has_global_schema(conn):
+            c.log(f"synced {weather.sync_global_points(conn)} global points")
         points = weather.load_points(conn)
 
         if "eia" in parts:
@@ -189,6 +233,14 @@ def main() -> None:
             backfill_forecasts(conn, points, start, end, products, cycles, args.workers)
         if "actuals" in parts:
             backfill_actuals(conn, points, start, end, args.workers)
+        if "gfs" in parts:
+            import noaa_gfs
+            gfs_start = c.parse_utc(args.gfs_start) if args.gfs_start else end - timedelta(days=90)
+            gfs_cycles = sorted({int(x) for x in args.gfs_cycles.split(",") if x.strip()})
+            if bad := [h for h in gfs_cycles if h not in (0, 6, 12, 18)]:
+                sys.exit(f"GFS runs are at 0, 6, 12 and 18 UTC, not {bad}")
+            leads = noaa_gfs.parse_leads(args.gfs_leads)
+            backfill_gfs(conn, gfs_start, end, gfs_cycles, leads, args.gfs_fields, args.gfs_workers)
 
 
 if __name__ == "__main__":
