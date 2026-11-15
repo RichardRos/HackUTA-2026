@@ -23,6 +23,9 @@ RUN pip install --no-cache-dir -r requirements.api.txt
 RUN useradd --create-home --uid 10001 app
 COPY --chown=app:app mcp_server.py markets.py news.py db_read.py world_data.py flights.py ships.py tides.py wx_scores.py ./
 COPY --chown=app:app api ./api
+# Global Nostos (api/wx_world.py): the live blend module and the 20 trained-city locations.
+COPY --chown=app:app model/world_wx.py model/blend.py model/config.py model/score.py ./model/
+COPY --chown=app:app model/data/locations.csv ./model/data/
 COPY --from=web --chown=app:app /web/dist ./web/dist
 
 USER app
