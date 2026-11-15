@@ -71,7 +71,8 @@ A failed chunk is logged and skipped. Re-running the same command fills the gaps
 
 ## Scheduled job
 `.github/workflows/ingest.yml` runs `update.py` at :17 every hour on GitHub Actions. Add the secrets `TIMESCALE_SERVICE_URL`,
-`EIA_API_KEY` and (optionally) `NWS_USER_AGENT`, then use "Run workflow" to test it. Each part runs on its own (`--only`/`--skip`),
+`EIA_API_KEY`, and (optionally) `NWS_USER_AGENT`. If your service URL omits the password, also add `TIMESCALE_PASSWORD`.
+Then use "Run workflow" to test it. Each part runs on its own (`--only`/`--skip`),
 and one failing doesn't stop the others.
 
 To run it from your own machine instead, use cron (`crontab -e`):

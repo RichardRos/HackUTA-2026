@@ -5,6 +5,7 @@
 #   EIA_API_KEY            required (free: https://www.eia.gov/opendata/register.php)
 #   NWS_USER_AGENT         optional, e.g. "nostos-ingest (team-contact@example.com)";
 #                          api.weather.gov asks clients to identify themselves
+#   TIMESCALE_PASSWORD     optional; needed when TIMESCALE_SERVICE_URL omits password
 name: ingest
 
 on:
@@ -30,5 +31,6 @@ jobs:
       - run: python ingest/update.py
         env:
           TIMESCALE_SERVICE_URL: ${{ secrets.TIMESCALE_SERVICE_URL }}
+          PGPASSWORD: ${{ secrets.TIMESCALE_PASSWORD }}
           EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
           NWS_USER_AGENT: ${{ secrets.NWS_USER_AGENT }}
