@@ -24,7 +24,7 @@ class _FakeResponse:
 
 class NormalizationTests(unittest.TestCase):
     def test_default_gemini_model(self):
-        self.assertEqual(markets.GEMINI_MODEL_DEFAULT, "gemini-2.5-flash")
+        self.assertEqual(markets.GEMINI_MODEL_DEFAULT, "gemini-3.5-flash-lite")
 
     def test_punctuation_stopwords_and_numbers(self):
         expected = "market close above 70000 friday"

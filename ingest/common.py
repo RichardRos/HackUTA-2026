@@ -84,7 +84,7 @@ def db_url() -> str:
     if _password_source() == "none":
         sys.exit("TIMESCALE_SERVICE_URL has no password and PGPASSWORD is not set.\n"
                  "  Locally: add PGPASSWORD=... (from the Tiger Cloud credentials file) to .env.\n"
-                 "  GitHub Actions: add a repo secret TIMESCALE_PASSWORD with that value.")
+                 "  Docker: put PGPASSWORD in .env (compose passes it to the containers).")
     return url
 
 

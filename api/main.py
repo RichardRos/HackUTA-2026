@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Path, Qu
 from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastmcp.server.auth.providers.jwt import JWTVerifier  # noqa: E402
+from pydantic import BaseModel, ConfigDict, Field  # noqa: E402
 
 import mcp_server as tools  # noqa: E402
 import ships  # noqa: E402
@@ -42,8 +43,16 @@ _verifier = JWTVerifier(
 ) if CLERK_DOMAIN else None
 
 
+# Local test image only (compose.dev.yaml): every request counts as user "dev". Never set in production.
+DEV_AUTH_BYPASS = os.getenv("DEV_AUTH_BYPASS") == "1"
+if DEV_AUTH_BYPASS:
+    logging.getLogger("uvicorn.error").warning("DEV_AUTH_BYPASS=1: sign-in is disabled; local testing only")
+
+
 async def require_user(authorization: Annotated[str | None, Header()] = None) -> str:
     """Verify the Clerk session token the web app sends as a bearer token."""
+    if DEV_AUTH_BYPASS:
+        return "dev"
     if _verifier is None:
         raise HTTPException(503, "CLERK_DOMAIN is not set")
     scheme, _, token = (authorization or "").partition(" ")
@@ -297,6 +306,40 @@ def marine_grid():
     return _run(tools.get_marine_grid)
 
 
+class LatLon(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
+class VoyageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: tools.VoyageMode
+    vessel: tools.VesselId = "container"
+    start: LatLon | None = None
+    end: LatLon | None = None
+    start_port: tools.PortId | None = None
+    end_port: tools.PortId | None = None
+    depart: str | None = Field(default=None, max_length=40)
+    speed_kn: float | None = Field(default=None, ge=2, le=30)
+    dwell_h: float = Field(default=24, ge=0, le=240)
+
+
+@rest.get("/voyage/options")
+def voyage_options():
+    return _run(tools.get_voyage_options)
+
+
+@rest.post("/voyage/route")
+def voyage_route(body: VoyageRequest):
+    from voyage import remote  # the Vultr voyage service when VOYAGE_REMOTE_URL is set, else in-process
+
+    return _run(remote.plan, mode=body.mode, vessel_id=body.vessel,
+                start=(body.start.lat, body.start.lon) if body.start else None,
+                end=(body.end.lat, body.end.lon) if body.end else None,
+                start_port=body.start_port, end_port=body.end_port, depart=body.depart,
+                speed_kn=body.speed_kn, dwell_h=body.dwell_h)
+
+
 @rest.get("/tides")
 def tides_overview():
     return _run(tools.get_tides)
@@ -344,11 +387,22 @@ def country_filings(
     return _run(tools.get_country_filings, country, q, days)
 
 
+def _warm_voyage() -> None:
+    try:
+        from voyage import grid, storage
+
+        storage.current()
+        grid.ocean()
+    except Exception as exc:  # noqa: BLE001 (routing still loads them on its first request)
+        logging.getLogger("uvicorn.error").warning("voyage warm-up failed: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with mcp_app.lifespan(app):  # FastMCP's session manager must run
         ships.tracker.seed(await asyncio.to_thread(_stored_vessels))
         ships.tracker.start()  # AIS websocket; no-op without AISSTREAM_API_KEY
+        warm = asyncio.create_task(asyncio.to_thread(_warm_voyage))  # noqa: F841 (held while serving); first route no longer pays ~3 s for model + grid
         yield
         await ships.tracker.stop()
     assistant_store.close_pool()
@@ -377,6 +431,7 @@ if (WEB_DIST / "index.html").is_file():
     @app.get("/", include_in_schema=False)
     @app.get("/world", include_in_schema=False)
     @app.get("/search", include_in_schema=False)
+    @app.get("/model", include_in_schema=False)
     def web_app():
         return FileResponse(WEB_DIST / "index.html")
 

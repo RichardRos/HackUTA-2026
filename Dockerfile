@@ -11,7 +11,8 @@ COPY requirements.ingest.txt ./
 RUN pip install --no-cache-dir -r requirements.ingest.txt
 
 RUN useradd --create-home --uid 10001 ingest
-COPY --chown=ingest:ingest markets.py news.py open_feeds.py ingest_service.py ./
+COPY --chown=ingest:ingest markets.py news.py open_feeds.py ingest_service.py ships.py ./
+COPY --chown=ingest:ingest ingest ./ingest
 COPY --chown=ingest:ingest db ./db
 
 USER ingest

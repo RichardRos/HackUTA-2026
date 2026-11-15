@@ -4,6 +4,7 @@ SEC EDGAR filings by where the filer is based. Keyless except Alpaca."""
 
 import csv
 import io
+import json
 import math
 import os
 import re
@@ -14,6 +15,8 @@ from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
 import httpx
+
+from db_read import read_query, write_query
 
 TIMEOUT = httpx.Timeout(15.0)
 
@@ -38,6 +41,82 @@ def ttl_cache(seconds: int):
             return value
 
         inner.cache_clear = store.clear  # type: ignore[attr-defined]
+        return inner
+
+    return deco
+
+
+
+RETRY_AFTER = 600  # after a failed refresh, serve the last good value this long before calling upstream again
+DB_CACHE = os.getenv("NOSTOS_DB_CACHE") == "1"  # set for the API container; tests and scripts stay memory-only
+
+
+def stored(ttl: int, max_age: int, mark_stale: bool = False):
+    """Memory + database cache for rate-limited upstream calls (table api_cache).
+
+    Fresh (younger than `ttl`) values come from memory, else from the database, so restarts and other
+    workers reuse the last fetch. One thread per key refreshes; on any failure the last good value is
+    served if younger than `max_age` (with "stale": True when `mark_stale`) and retried after
+    RETRY_AFTER. The key includes a hash of the function's code, so a changed function refetches.
+    """
+    def deco(fn):
+        import hashlib
+        import inspect
+
+        version = hashlib.md5(inspect.getsource(fn).encode()).hexdigest()[:8]
+        mem: dict = {}  # args -> (value, fetched_at epoch, retry_at epoch or None); successes only, so bounded
+        locks = [threading.Lock() for _ in range(16)]  # striped: bogus args can't grow a lock table
+
+        def usable(hit):
+            return hit and (time.time() - hit[1] < ttl or (hit[2] and time.time() < hit[2]))
+
+        def db_load(key):
+            if not DB_CACHE:
+                return None
+            try:
+                rows = read_query("SELECT value, extract(epoch FROM fetched_at) AS t FROM api_cache WHERE key = %s", (key,))
+                return (rows[0]["value"], float(rows[0]["t"])) if rows else None
+            except Exception:  # no database (tests, local scripts) or it is down: memory only
+                return None
+
+        def db_save(key, value):
+            if not DB_CACHE:
+                return
+            try:
+                write_query("INSERT INTO api_cache (key, value, fetched_at) VALUES (%s, %s::jsonb, now()) "
+                            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, fetched_at = EXCLUDED.fetched_at",
+                            (key, json.dumps(value, default=str)))
+            except Exception:
+                pass
+
+        def serve(hit):
+            stale = time.time() - hit[1] >= ttl
+            return {**hit[0], "stale": True} if stale and mark_stale and isinstance(hit[0], dict) else hit[0]
+
+        @wraps(fn)
+        def inner(*args):
+            if usable(hit := mem.get(args)):
+                return serve(hit)
+            with locks[hash(args) % len(locks)]:  # single flight: concurrent misses wait for one refresh
+                if usable(hit := mem.get(args)):
+                    return serve(hit)
+                key = f"{fn.__module__}.{fn.__name__}:{version}:{json.dumps(args, default=str)}"
+                if not hit and (saved := db_load(key)):
+                    hit = mem[args] = (saved[0], saved[1], None)
+                    if usable(hit):
+                        return hit[0]  # fetched by an earlier process within ttl: reuse for the time it has left
+                try:
+                    value = fn(*args)
+                except Exception:
+                    if hit and time.time() - hit[1] < max_age:
+                        mem[args] = hit = (hit[0], hit[1], time.time() + RETRY_AFTER)
+                        return serve(hit)
+                    raise
+                mem[args] = (value, time.time(), None)
+                db_save(key, value)
+                return value
+
+        inner.cache_clear = mem.clear  # type: ignore[attr-defined]
         return inner
 
     return deco
@@ -136,7 +215,7 @@ SOVEREIGN_YIELDS = {  # Natural Earth name -> TradingView TVC country code (ever
 EURO_AREA = {"Estonia", "Latvia", "Luxembourg", "Slovenia", "Croatia", "Cyprus", "Malta"}  # no own TVC series: euro-area curve
 
 
-@ttl_cache(1800)
+@stored(ttl=1800, max_age=24 * 3600)
 def _tv_yields() -> dict[str, list[dict]]:
     """Every TVC government bond yield in one request, grouped by country code."""
     r = httpx.post(TV_SCAN, timeout=TIMEOUT, headers={"User-Agent": "Mozilla/5.0"}, json={
@@ -232,33 +311,54 @@ def treasury_etf_trend(days: int = 30) -> dict:
 # --- Commodity futures by region (Yahoo Finance chart API, front month, no key) ---------------
 
 # commodity -> (symbol, benchmark, region, settlement). Keys double as news topic tags (news.TOPICS).
-COMMODITY_FUTURES = {
+COMMODITY_FUTURES = {  # (Yahoo symbol, name, pricing point, settlement, physical unit); every series Yahoo has with history
     "oil": [
-        ("BZ=F", "Brent", "UK / North Sea", "cash"),
-        ("CL=F", "WTI", "US / Cushing", "physical"),
+        ("BZ=F", "Brent crude", "North Sea (ICE)", "cash", "bbl"),
+        ("CL=F", "WTI crude", "Cushing, Oklahoma (NYMEX)", "physical", "bbl"),
+        ("DBL=F", "Dubai crude", "Arabian Gulf (Platts, NYMEX)", "cash", "bbl"),
+        ("HO=F", "ULSD heating oil", "New York Harbor (NYMEX)", "physical", "gal"),
+        ("RB=F", "RBOB gasoline", "New York Harbor (NYMEX)", "physical", "gal"),
     ],
     "natural-gas": [
-        ("TTF=F", "Dutch TTF", "Netherlands / EU", "cash"),
-        ("NG=F", "Henry Hub", "US / Louisiana", "physical"),
+        ("NG=F", "Henry Hub", "Erath, Louisiana (NYMEX)", "physical", "MMBtu"),
+        ("TTF=F", "Dutch TTF", "Netherlands virtual hub (ICE Endex)", "physical", "MWh"),
+        ("JKM=F", "JKM LNG", "Delivered Japan / Korea / China / Taiwan (Platts, NYMEX)", "cash", "MMBtu"),
     ],
     "metals": [
-        ("GC=F", "Gold", "US / COMEX", "physical"),
-        ("SI=F", "Silver", "US / COMEX", "physical"),
-        ("HG=F", "Copper", "US / COMEX", "physical"),
+        ("GC=F", "Gold", "COMEX, New York vaults", "physical", "oz"),
+        ("SI=F", "Silver", "COMEX, New York vaults", "physical", "oz"),
+        ("PL=F", "Platinum", "NYMEX, New York / Zurich vaults", "physical", "oz"),
+        ("PA=F", "Palladium", "NYMEX, New York / Zurich vaults", "physical", "oz"),
+        ("HG=F", "Copper", "COMEX, US warehouses", "physical", "lb"),
+        ("ALI=F", "Aluminum", "COMEX, US warehouses", "physical", "t"),
+        ("HRC=F", "Hot-rolled steel coil", "US Midwest (CRU index, COMEX)", "cash", "short t"),
+        ("TIO=F", "Iron ore 62% Fe", "CFR Qingdao, China (COMEX)", "cash", "t"),
     ],
     "agriculture": [
-        ("ZW=F", "Wheat", "US / CBOT", "physical"),
-        ("ZC=F", "Corn", "US / CBOT", "physical"),
-        ("KC=F", "Coffee", "US / ICE", "physical"),
-        ("CC=F", "Cocoa", "US / ICE", "physical"),
-        ("SB=F", "Sugar", "US / ICE", "physical"),
+        ("ZW=F", "Chicago SRW wheat", "Chicago / Toledo (CBOT)", "physical", "bu"),
+        ("KE=F", "KC HRW wheat", "Kansas City (CBOT)", "physical", "bu"),
+        ("ZC=F", "Corn", "Illinois River (CBOT)", "physical", "bu"),
+        ("ZS=F", "Soybeans", "Illinois River (CBOT)", "physical", "bu"),
+        ("ZM=F", "Soybean meal", "Central US processors (CBOT)", "physical", "short t"),
+        ("ZL=F", "Soybean oil", "Central US processors (CBOT)", "physical", "lb"),
+        ("ZO=F", "Oats", "Minneapolis / Chicago (CBOT)", "physical", "bu"),
+        ("ZR=F", "Rough rice", "Arkansas (CBOT)", "physical", "cwt"),
+        ("KC=F", "Arabica coffee", "ICE US licensed warehouses", "physical", "lb"),
+        ("CC=F", "Cocoa", "ICE US, Delaware River ports", "physical", "t"),
+        ("SB=F", "Raw sugar #11", "FOB origin, world raw cane (ICE)", "physical", "lb"),
+        ("CT=F", "Cotton", "US Southern warehouses (ICE)", "physical", "lb"),
+        ("OJ=F", "Orange juice (FCOJ)", "Florida (ICE)", "physical", "lb"),
+        ("LBR=F", "Lumber", "US / Canada West mills (CME)", "physical", "1000 bd ft"),
     ],
     "livestock": [
-        ("HE=F", "Lean hogs", "US / CME", "cash"),
-        ("GF=F", "Feeder cattle", "US / CME", "cash"),
-        ("LE=F", "Live cattle", "US / CME", "physical"),
+        ("HE=F", "Lean hogs", "US Midwest (CME index)", "cash", "lb"),
+        ("LE=F", "Live cattle", "US Plains feedlots (CME)", "physical", "lb"),
+        ("GF=F", "Feeder cattle", "US Plains (CME index)", "cash", "lb"),
+        ("DC=F", "Class III milk", "US dairy (CME, USDA price)", "cash", "cwt"),
+        ("CSC=F", "Cheese", "US dairy (CME, USDA price)", "cash", "lb"),
     ],
 }
+SPREADS = {"oil": ("BZ=F", "CL=F")}  # same unit, same grade family: Brent - WTI
 UNITS = {"USX": "US cents", "USD": "USD", "EUR": "EUR"}
 
 
@@ -280,7 +380,7 @@ def _yahoo_closes(symbol: str, days: int) -> tuple[str, list[dict]]:
     return result["meta"].get("currency", ""), closes
 
 
-@ttl_cache(900)
+@stored(ttl=900, max_age=24 * 3600)
 def commodity_futures(commodity: str, days: int = 30) -> dict:
     """Front-month futures for one commodity, one series per regional benchmark, with settlement type."""
     if commodity not in COMMODITY_FUTURES:
@@ -289,17 +389,18 @@ def commodity_futures(commodity: str, days: int = 30) -> dict:
     with ThreadPoolExecutor(len(specs)) as pool:
         fetched = list(pool.map(lambda spec: _yahoo_closes(spec[0], days), specs))
     contracts = []
-    for (symbol, name, region, settlement), (currency, closes) in zip(specs, fetched):
+    for (symbol, name, region, settlement, per), (currency, closes) in zip(specs, fetched):
         change = (closes[-1]["close"] / closes[0]["close"] - 1) * 100 if len(closes) > 1 else None
         contracts.append({
             "symbol": symbol, "name": name, "region": region, "settlement": settlement,
-            "unit": UNITS.get(currency, currency), "price": closes[-1]["close"] if closes else None,
+            "unit": f"{UNITS.get(currency or 'USD', currency)}/{per}", "price": closes[-1]["close"] if closes else None,
             "closes": closes, "change_pct": round(change, 2) if change is not None else None,
         })
     spread = None
-    a, b = contracts[0], contracts[-1]
-    # Only a two-benchmark pair in the same unit has a meaningful spread (Brent - WTI, not TTF - Henry Hub).
-    if len(contracts) == 2 and a["unit"] == b["unit"] and a["price"] is not None and b["price"] is not None:
+    by = {c["symbol"]: c for c in contracts}
+    pair = SPREADS.get(commodity)
+    if pair and all(by[s]["price"] is not None for s in pair):
+        a, b = by[pair[0]], by[pair[1]]
         spread = {"name": f"{a['name']} - {b['name']}", "value": round(a["price"] - b["price"], 2), "unit": a["unit"]}
     return {"source": "Yahoo Finance, front-month futures", "commodity": commodity, "days": days,
             "contracts": contracts, "spread": spread}
@@ -402,23 +503,6 @@ GRID_LONS = list(range(-180, 180, GRID_STEP))
 _GRID_CHUNK = 400  # points per request; longer coordinate lists exceed the URL limit
 
 
-def keep_last(fn):
-    """If a refresh fails (rate limit, outage), serve the last good result marked stale."""
-    last: dict = {}
-
-    @wraps(fn)
-    def inner(*args):
-        try:
-            last[args] = fn(*args)
-            return last[args]
-        except (httpx.HTTPError, ValueError):
-            if args in last:
-                return {**last[args], "stale": True}
-            raise
-
-    return inner
-
-
 def _grid_fetch(url: str, fields: list[str]) -> dict[str, list]:
     lats = [la for la in GRID_LATS for _ in GRID_LONS]
     lons = [lo for _ in GRID_LATS for lo in GRID_LONS]
@@ -449,13 +533,65 @@ def _uv(speed: list, direction: list) -> tuple[list, list]:
     return u, v
 
 
-@ttl_cache(4 * 3600)
-@keep_last
+GFS_BUCKET = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
+GFS_FIELDS = {  # grid key -> (GRIB var, level, label must contain); f006 of the latest run
+    "temp": ("TMP", "2 m above ground", "6 hour fcst"), "u": ("UGRD", "10 m above ground", "6 hour fcst"),
+    "v": ("VGRD", "10 m above ground", "6 hour fcst"), "prate": ("PRATE", "surface", "0-6 hour ave"),
+    "cloud": ("TCDC", "entire atmosphere", "0-6 hour ave"),
+}
+
+
+def _gfs_grid() -> dict:
+    """The same 10° grid from NOAA GFS on AWS (keyless): the fallback when Open-Meteo's daily quota runs out."""
+    import eccodes
+    import numpy as np
+
+    now = datetime.now(timezone.utc)
+    for back in range(5, 30, 6):  # newest cycle whose 6 h step is uploaded (runs land ~4-5 h after cycle time)
+        cyc = (now - timedelta(hours=back)).replace(minute=0, second=0, microsecond=0)
+        cyc = cyc.replace(hour=cyc.hour // 6 * 6)
+        url = f"{GFS_BUCKET}/gfs.{cyc:%Y%m%d}/{cyc:%H}/atmos/gfs.t{cyc:%H}z.pgrb2.0p25.f006"
+        idx = httpx.get(url + ".idx", timeout=TIMEOUT)
+        if idx.status_code == 200:
+            break
+    else:
+        raise ValueError("no recent GFS run found")
+    lines = [l.split(":") for l in idx.text.splitlines() if l]
+    vals = {}
+    for key, (var, level, label) in GFS_FIELDS.items():
+        i = next((k for k, l in enumerate(lines) if l[3] == var and l[4] == level and label in l[5]), None)
+        if i is None:
+            raise ValueError(f"GFS run has no {var} {level}")
+        end = int(lines[i + 1][1]) - 1 if i + 1 < len(lines) else ""
+        r = httpx.get(url, headers={"Range": f"bytes={lines[i][1]}-{end}"}, timeout=httpx.Timeout(60.0))
+        if r.status_code != 206:
+            raise ValueError(f"GFS range request returned {r.status_code}")
+        blob = r.content
+        h = eccodes.codes_new_from_message(blob)
+        try:
+            ni, nj = eccodes.codes_get(h, "Ni"), eccodes.codes_get(h, "Nj")
+            vals[key] = eccodes.codes_get_values(h).reshape(nj, ni)  # 0.25°: row 0 = 90°N, column 0 = 0°E
+        finally:
+            eccodes.codes_release(h)
+    pick = lambda a: [float(a[int((90 - la) * 4), int((lo % 360) * 4)]) for la in GRID_LATS for lo in GRID_LONS]  # noqa: E731
+    u, v = [round(x, 2) for x in pick(vals["u"])], [round(x, 2) for x in pick(vals["v"])]
+    return {"source": f"NOAA GFS {cyc:%Y-%m-%d %H}Z +6 h (Open-Meteo quota reached)", "fetched_at": now.isoformat(),
+            "step": GRID_STEP, "lats": GRID_LATS, "lons": GRID_LONS,
+            "temp_c": [round(t - 273.15, 1) for t in pick(vals["temp"])],
+            "precip_mm": [round(p * 3600, 2) for p in pick(vals["prate"])],  # kg/m²/s -> mm per hour
+            "cloud_pct": [round(c) for c in pick(vals["cloud"])], "wind_u": u, "wind_v": v,
+            "wind_ms": [round(float(np.hypot(a, b)), 2) for a, b in zip(u, v)]}
+
+
+@stored(ttl=4 * 3600, max_age=48 * 3600, mark_stale=True)
 def weather_grid() -> dict:
     """Current temperature (°C), precipitation (mm), cloud cover (%) and 10 m wind (u/v, m/s) on a
     global grid, row-major from the southernmost row, west to east."""
-    g = _grid_fetch("https://api.open-meteo.com/v1/forecast",
-                    ["temperature_2m", "precipitation", "cloud_cover", "wind_speed_10m", "wind_direction_10m"])
+    try:
+        g = _grid_fetch("https://api.open-meteo.com/v1/forecast",
+                        ["temperature_2m", "precipitation", "cloud_cover", "wind_speed_10m", "wind_direction_10m"])
+    except httpx.HTTPError:  # quota (429) or outage: same grid from NOAA GFS
+        return _gfs_grid()
     u, v = _uv(g["wind_speed_10m"], g["wind_direction_10m"])
     return {"source": "Open-Meteo (NOAA GFS / ECMWF blend)", "fetched_at": datetime.now(timezone.utc).isoformat(),
             "step": GRID_STEP, "lats": GRID_LATS, "lons": GRID_LONS,
@@ -463,8 +599,7 @@ def weather_grid() -> dict:
             "wind_u": u, "wind_v": v, "wind_ms": g["wind_speed_10m"]}
 
 
-@ttl_cache(4 * 3600)
-@keep_last
+@stored(ttl=4 * 3600, max_age=48 * 3600, mark_stale=True)
 def marine_grid() -> dict:
     """Current significant wave height (m), direction and period on the same grid; null over land.
     Wave direction is where waves come FROM; wave_u/wave_v point where they travel."""

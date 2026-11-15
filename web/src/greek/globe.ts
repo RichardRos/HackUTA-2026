@@ -33,18 +33,20 @@ function meanderRow(g: CanvasRenderingContext2D, y: number, h: number, unit: num
  * a gilt graticule, a meander band for the equator and the ancient names of the seas.
  */
 export function greekOceanTexture() {
-  const W = 2048, H = 1024
+  // Painted in a 2048 x 1024 layout, rasterised at 4096 x 2048 so waves and lettering stay crisp when you zoom in.
+  const W = 2048, H = 1024, SCALE = 2
   const c = document.createElement('canvas')
-  c.width = W
-  c.height = H
+  c.width = W * SCALE
+  c.height = H * SCALE
   const g = c.getContext('2d')!
   const tex = new CanvasTexture(c)
   tex.colorSpace = SRGBColorSpace
-  tex.anisotropy = 4
+  tex.anisotropy = 4 // sharp enough toward the rim; 16x on a 4096² map cost real fill rate on laptop GPUs
   const X = (lng: number) => ((lng + 180) / 360) * W
   const Y = (lat: number) => ((90 - lat) / 180) * H
 
   const paint = () => {
+    g.setTransform(SCALE, 0, 0, SCALE, 0, 0)
     const sea = g.createLinearGradient(0, 0, 0, H)
     sea.addColorStop(0, '#07131f')
     sea.addColorStop(0.22, '#0c2537')
@@ -296,7 +298,7 @@ export class SeaCreatureLayer {
 
   constructor(globe: GlobeMethods) {
     this.globe = globe
-    const px = Math.min(devicePixelRatio, 1.5)
+    const px = Math.min(devicePixelRatio, 2)
     const spec: Record<Kind, { svg: string; size: number; wiggle: number }> = {
       ketos: { svg: ketosSvg(), size: 66, wiggle: 0.05 },
       hippocampus: { svg: hippocampusSvg(), size: 58, wiggle: 0.025 },
@@ -310,7 +312,7 @@ export class SeaCreatureLayer {
       geometry.setAttribute('phase', new BufferAttribute(Float32Array.from(swimmers, (s) => s.phase * 3), 1))
       const material = new ShaderMaterial({
         uniforms: {
-          map: { value: svgTexture(spec[kind].svg, 256, 128) },
+          map: { value: svgTexture(spec[kind].svg, 512, 256) },
           size: { value: spec[kind].size * px },
           time: { value: 0 },
           wiggle: { value: spec[kind].wiggle },

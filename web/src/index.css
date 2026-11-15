@@ -75,10 +75,10 @@ main { height: calc(100% - 72px); }
 .legend li { display: flex; align-items: center; gap: 10px; }
 
 .view-controls { position: absolute; z-index: 4; top: 20px; right: var(--gutter); width: 272px; display: grid; gap: 8px; padding: 10px; background: var(--surface); border: 1px solid var(--line); }
-.view-switch, .weather-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.view-switch button, .weather-switch button { min-height: 38px; padding: 0 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font: 500 11px var(--mono); }
-.view-switch button:hover, .weather-switch button:hover { color: var(--text); }
-.view-switch button[aria-pressed="true"], .weather-switch button[aria-pressed="true"] { border-color: var(--line); background: var(--bg); color: var(--text); }
+.view-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.view-switch button { min-height: 38px; padding: 0 8px; border: 1px solid transparent; background: transparent; color: var(--muted); font: 500 11px var(--mono); }
+.view-switch button:hover { color: var(--text); }
+.view-switch button[aria-pressed="true"] { border-color: var(--line); background: var(--bg); color: var(--text); }
 .commodity-select select { width: 100%; min-height: 38px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: 400 12px var(--sans); }
 .weather-note { margin: 0; min-height: 16px; color: var(--muted); font: 400 10px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .03em; }
 
@@ -195,10 +195,6 @@ main { height: calc(100% - 72px); }
   .detail { top: auto; bottom: 16px; left: 16px; right: 16px; width: auto; }
 }
 /* country rundown panel */
-.panel-side { position: absolute; z-index: 2; top: 0; right: 0; bottom: 0; width: 440px; overflow-y: auto; background: var(--surface); border-left: 1px solid var(--line); padding: 24px 28px 96px; }
-.panel-side h2 { font-size: 30px; margin-bottom: 20px; }
-.panel-side section { border-top: 1px solid var(--line); padding: 20px 0; }
-.panel-side .editorial { border-top: 0; padding-top: 0; }
 .editorial h3 { font-size: 19px; line-height: 1.3; margin: 0 0 10px; font-weight: 500; }
 .editorial p { margin: 0 0 10px; color: #c4ced1; }
 .watch { margin: 6px 0 12px; padding-left: 18px; color: #c4ced1; }
@@ -242,6 +238,51 @@ main { height: calc(100% - 72px); }
 .down { color: var(--rising); }
 
 /* assistant */
+/* Voyage planner: right column under the view controls; a bottom sheet on phones. */
+.voyage { position: absolute; z-index: 3; right: var(--gutter); top: 150px; bottom: 20px; width: 340px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); padding: 16px; display: grid; align-content: start; grid-auto-rows: max-content; gap: 12px; }
+.voyage .kicker { margin: 0; }
+.voyage-modes { display: grid; grid-template-columns: repeat(3, 1fr); }
+.voyage-fields { display: grid; gap: 8px; }
+.voyage-fields.two { grid-template-columns: 1fr 1fr; }
+.voyage-fields .wide { grid-column: 1 / -1; }
+.voyage-fields label { display: grid; gap: 4px; font: 400 11px var(--mono); text-transform: uppercase; color: var(--muted); letter-spacing: .03em; }
+.voyage-fields select, .voyage-fields input { width: 100%; min-height: 38px; padding: 0 10px; background: var(--bg); border: 1px solid var(--line); color: var(--text); font: 400 13px var(--sans); text-transform: none; letter-spacing: 0; color-scheme: dark; }
+.voyage-pick { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.voyage-pick .micro { display: inline; margin: 0; }
+.chip { min-height: 32px; padding: 0 12px; background: none; border: 1px solid var(--line); color: var(--muted); font: 500 11px var(--mono); border-radius: 2px; cursor: pointer; }
+.chip:hover, .chip.on { color: var(--text); border-color: #ffc77a; }
+.voyage-actions { display: flex; gap: 8px; align-items: center; }
+.voyage-actions .button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.voyage-stops, .voyage-legs { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; max-height: 220px; overflow-y: auto; counter-reset: stop; }
+.voyage-stops li { padding: 4px 0 4px 26px; position: relative; font-size: 13px; counter-increment: stop; }
+.voyage-stops li::before { content: counter(stop); position: absolute; left: 0; top: 5px; width: 18px; font: 500 10px var(--mono); color: var(--accent); text-align: right; }
+.voyage-stops .micro, .voyage-legs .micro { display: block; margin: 0; text-transform: none; letter-spacing: 0; font-family: var(--sans); }
+.voyage-legs button { width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); color: var(--text); padding: 6px 0; cursor: pointer; font: 400 13px var(--sans); }
+.voyage-legs button:hover b { color: #ffc77a; }
+.voyage-result { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+.voyage-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; }
+.voyage-stats div { border: 1px solid var(--line); padding: 8px 10px; display: grid; gap: 2px; min-width: 0; }
+.voyage-stats dt { font: 400 10px var(--mono); text-transform: uppercase; color: var(--muted); letter-spacing: .03em; }
+.voyage-stats dd { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.voyage-stats .micro { margin: 0; text-transform: none; letter-spacing: 0; font-family: var(--sans); }
+.voyage-scrub { display: flex; gap: 8px; align-items: center; }
+.voyage-scrub input { flex: 1; accent-color: #ffc77a; min-height: 32px; }
+.voyage-here { margin: 0; text-transform: none; letter-spacing: 0; }
+.voyage-strip { display: grid; gap: 2px; }
+.voyage-strip .section-title { margin: 0; }
+.voyage-strip .micro { margin: 0; text-transform: none; letter-spacing: 0; min-height: 14px; }
+.voyage-legend { display: grid; gap: 4px; }
+.voyage-legend .micro { margin: 0; }
+.voyage-ramp { height: 6px; border-radius: 3px; background: linear-gradient(to right, rgb(61,189,201), rgb(230,244,246), rgb(255,155,89)); }
+.voyage-ramp-labels { display: flex; justify-content: space-between; }
+.voyage-dash { display: inline-block; width: 18px; border-top: 1px dashed rgba(174,186,190,.8); vertical-align: middle; margin-right: 4px; }
+.voyage-model summary { cursor: pointer; font: 400 11px var(--mono); color: var(--muted); text-transform: uppercase; min-height: 24px; }
+.voyage-model p { font-size: 12px; line-height: 1.5; color: var(--muted); margin: 6px 0 0; }
+.earth.picking { cursor: crosshair; }
+@media (max-width: 720px) {
+  .voyage { left: 12px; right: 12px; top: auto; bottom: 12px; width: auto; max-height: 55%; }
+}
+
 .assistant-open { position: absolute; z-index: 3; left: var(--gutter); bottom: 32px; }
 .assistant { position: absolute; z-index: 3; left: var(--gutter); bottom: 24px; width: 400px; max-height: min(620px, calc(100% - 48px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); padding: 20px 20px 8px; }
 .world.focused .assistant-open, .world.focused .assistant { left: auto; right: 20px; bottom: 20px; z-index: 4; } /* chat about the open panel, over its cards */
@@ -255,7 +296,6 @@ main { height: calc(100% - 72px); }
 .starters .link:hover { color: var(--text); }
 
 @media (max-width: 820px) {
-  .panel-side { width: 100%; }
   .assistant, .world.focused .assistant { left: 16px; right: 16px; width: auto; }
 }
 .chart-legend li { white-space: nowrap; }
@@ -303,7 +343,7 @@ main { height: calc(100% - 72px); }
 .world.focused .world-intro, .world.focused .layers { display: none; }
 .world.focused .earth { inset: 64px auto auto 20px; }
 .world.focused .view-controls { top: 12px; right: 20px; width: auto; display: flex; align-items: center; gap: 6px; padding: 6px; }
-.world.focused .view-switch, .world.focused .weather-switch { display: flex; }
+.world.focused .view-switch { display: flex; }
 .world.focused .weather-note { display: none; }
 .world.focused .commodity-select select { width: 126px; min-height: 38px; }
 .focus { position: absolute; inset: 64px 20px 20px; z-index: 2; display: grid; gap: 16px;
@@ -398,7 +438,6 @@ html[data-greek="true"] .section-title,
 html[data-greek="true"] .tag,
 html[data-greek="true"] .pip-tag,
 html[data-greek="true"] .view-switch button,
-html[data-greek="true"] .weather-switch button,
 html[data-greek="true"] .motion button { font-family: var(--display); font-weight: 600; letter-spacing: .12em; }
 html[data-greek="true"] .kicker { color: var(--accent); }
 html[data-greek="true"] .muted,
@@ -426,12 +465,12 @@ html[data-greek="true"] .greek-toggle-mark {
 }
 
 /* panels: night-blue enamel in a gilt double frame, a Greek key along the top */
-html[data-greek="true"] :is(.layers, .view-controls, .assistant, .detail, .panel-side, .focus .card) {
+html[data-greek="true"] :is(.layers, .view-controls, .assistant, .detail, .focus .card) {
   background: var(--panel); border: 1px solid rgba(232, 201, 122, .38); box-shadow: var(--panel-frame);
   backdrop-filter: blur(6px);
 }
 html[data-greek="true"] .focus .card { position: relative; }
-html[data-greek="true"] :is(.layers, .assistant, .panel-side, .focus .card.hero)::before {
+html[data-greek="true"] :is(.layers, .assistant, .focus .card.hero)::before {
   content: ''; position: absolute; top: 7px; left: 8px; right: 8px; height: 8px; pointer-events: none;
   background: var(--meander-gold) repeat-x left center / 16px 8px; opacity: .55;
 }
@@ -439,7 +478,6 @@ html[data-greek="true"] :is(.layers, .assistant, .panel-side, .focus .card.hero)
 html[data-greek="true"] .layers { padding-top: 22px; top: 236px; }
 html[data-greek="true"] .layers-open { position: absolute; top: 236px; } /* the Greek .button rule must not pull it into the flow */
 html[data-greek="true"] .assistant { padding-top: 26px; }
-html[data-greek="true"] .panel-side { padding-top: 32px; }
 /* layer chips: inscribed in Cinzel, the live ones ringed in their own colour with a gilt glow */
 html[data-greek="true"] .layer-chip { font: 600 11px/1 var(--display); letter-spacing: .08em; border-color: rgba(232, 201, 122, .3); }
 html[data-greek="true"] .layer-chip.on { background: rgba(232, 201, 122, .07); box-shadow: 0 0 10px rgba(232, 201, 122, .18); }
@@ -494,7 +532,7 @@ html[data-greek="true"] .search-suggestions button { font-family: var(--serif); 
 .oracle-motto [lang="grc"] { font-family: var(--greek); font-style: normal; color: var(--accent); letter-spacing: .06em; }
 
 /* the night sky behind the globe */
-.greek-sky { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.greek-sky { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; will-change: transform; contain: strict; } /* own layer: rasterised once, not per frame */
 .greek-sky .constellation polyline { fill: none; stroke: rgba(232, 201, 122, .3); stroke-width: 1; stroke-linejoin: round; }
 .greek-sky .cstar { fill: #fff4d6; }
 .greek-sky .constellation text { fill: rgba(232, 201, 122, .55); font: 400 13px var(--greek); letter-spacing: .32em; text-anchor: middle; }
@@ -513,9 +551,9 @@ span.gm-body { pointer-events: none; cursor: default; }
 .gm-body.crowded { opacity: 0; transform: scale(.4); }
 .gm-body:hover, .gm-body:focus-visible, .gm-body.active { transform: scale(1.22); }
 .gm-body:focus-visible { outline: 2px solid #f6dc8e; outline-offset: 4px; }
-.gm-art { position: absolute; inset: 0; animation: gm-bob 5s ease-in-out infinite; filter: drop-shadow(0 5px 7px rgba(0, 0, 0, .6)); }
+.gm-art { position: absolute; inset: 0; animation: gm-bob 5s ease-in-out infinite; filter: drop-shadow(0 5px 7px rgba(0, 0, 0, .6)); will-change: transform; } /* composited bob: the shadow filter is not re-run each frame */
 .gm-art svg, .lore-art svg { display: block; width: 100%; height: 100%; }
-.gm-halo { position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid rgba(232, 201, 122, .75); opacity: 0; animation: gm-halo 3.8s ease-out infinite; }
+.gm-halo { position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid rgba(232, 201, 122, .75); opacity: 0; animation: gm-halo 3.8s ease-out infinite; will-change: transform, opacity; }
 .gm-body.active .gm-halo { animation-duration: 1.6s; border-color: #f6dc8e; }
 .gm-body.active .gm-art { filter: drop-shadow(0 0 10px rgba(246, 220, 142, .9)) drop-shadow(0 5px 7px rgba(0, 0, 0, .6)); }
 .gm-label {
@@ -539,7 +577,7 @@ span.gm-body { pointer-events: none; cursor: default; }
   box-shadow: 0 0 0 2px #0a1a28, 0 0 0 3px #f6dc8e, 0 0 18px rgba(246, 220, 142, .9);
 }
 .art-swirl path + path { animation: gm-swirl 1.6s linear infinite; }
-@keyframes gm-bob { 50% { transform: translateY(-3px) rotate(-2deg); } }
+@keyframes gm-bob { 50% { transform: translateY(-3px); } } /* no rotation: rotating the rasterised art each frame soft-focuses it */
 @keyframes gm-halo { 0% { transform: scale(.92); opacity: .9; } 100% { transform: scale(1.45); opacity: 0; } }
 @keyframes gm-swirl { to { stroke-dashoffset: 14; } }
 
@@ -662,3 +700,13 @@ html[data-greek="true"] .splash .earth { top: 50%; }
 html[data-greek="true"] .model-card { outline: 1px solid rgba(232, 201, 122, .42); outline-offset: -7px; }
 html[data-greek="true"] .model-leads button, html[data-greek="true"] .model-table th { font-family: var(--display); font-weight: 600; letter-spacing: .12em; }
 html[data-greek="true"] .model-ours td { color: var(--accent); text-shadow: 0 0 10px rgba(232, 201, 122, .25); }
+
+/* Gemini answers rendered from Markdown (Markdown.tsx) */
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+.md h4 { margin: 12px 0 6px; font-size: 15px; font-weight: 600; }
+.md ul, .md ol { margin: 6px 0 10px; padding-left: 20px; }
+.md li { margin: 3px 0; }
+.md code { font: 12px var(--mono); background: var(--bg); padding: 1px 4px; border-radius: 2px; }
+.md a { color: var(--accent); }
+.card .motion { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; } /* in-card view switch (US bonds: yields / Treasury ETFs) */

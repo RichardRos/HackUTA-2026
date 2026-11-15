@@ -6,6 +6,7 @@ RUN npm ci
 COPY web/ ./
 # Vite bakes the publishable key into the bundle at build time (it is public by design).
 ARG VITE_CLERK_PUBLISHABLE_KEY
+ARG VITE_DEV_AUTH_BYPASS=""  # "1" only in compose.dev.yaml: Clerk stub for local end-to-end tests
 RUN test -n "$VITE_CLERK_PUBLISHABLE_KEY" && npm run build
 
 FROM python:3.11-slim
@@ -26,7 +27,12 @@ COPY --chown=app:app api ./api
 # Global Nostos (api/wx_world.py): the live blend module and the 20 trained-city locations.
 COPY --chown=app:app model/world_wx.py model/blend.py model/config.py model/score.py ./model/
 COPY --chown=app:app model/data/locations.csv ./model/data/
+COPY --chown=app:app voyage ./voyage
 COPY --from=web --chown=app:app /web/dist ./web/dist
+
+# Speed-model artifacts: a volume shared with the voyage-train job (Vultr Object Storage when configured).
+ENV VOYAGE_MODEL_DIR=/app/models/voyage
+RUN mkdir -p /app/models/voyage && chown -R app:app /app/models
 
 USER app
 EXPOSE 8000

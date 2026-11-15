@@ -11,3 +11,6 @@ __pycache__/
 .agents/
 .claude/skills/
 web/.taste-skill/
+
+# trained voyage speed models (voyage/storage.py); published to Vultr Object Storage, not git
+models/

@@ -1,0 +1,18 @@
+# Local test copy of the API + web image, signed in as "dev" (no Clerk) so Playwright can drive it.
+# Never deploy this file. Run alongside production: docker compose -p nostos-dev -f compose.dev.yaml up -d --build
+# Port: DEV_PORT (default 8100) on localhost.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      args:
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-pk_test_dev}
+        VITE_DEV_AUTH_BYPASS: "1"
+    init: true
+    env_file: .env
+    environment:
+      DEV_AUTH_BYPASS: "1"
+      NOSTOS_DB_CACHE: "1"
+    ports:
+      - "127.0.0.1:${DEV_PORT:-8100}:8000"

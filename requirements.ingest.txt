@@ -1,2 +1,5 @@
 psycopg[binary]>=3.2,<4
 python-dotenv>=1.0,<2
+websockets>=13,<18   # AIS stream (ships.py, ingest/ships_ais.py)
+numpy>=1.24          # GFS grids (ingest/update.py)
+eccodes>=2.37        # GFS GRIB2 decoding

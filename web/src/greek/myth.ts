@@ -12,6 +12,7 @@ export type Monster = {
   lat: number
   lng: number
   foe: string
+  story: string // the myth it comes from; Odyssey monsters keep the clay colour, the rest are royal blue
   source: string
   lore: string
   rank: number // 1 shows first when markers crowd each other
@@ -30,6 +31,9 @@ export type Station = {
   lore: string
 }
 
+export const ODYSSEY = 'Homer’s Odyssey'
+export const inOdyssey = (m: Monster) => m.story === ODYSSEY
+
 export type GreekMarker = Monster | Station
 export type LoreEntry = GreekMarker
 
@@ -40,6 +44,7 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'medusa', name: 'Medusa', greek: 'Μέδουσα', translit: 'Médousa', epithet: 'The Gorgon',
     place: 'Beyond the stream of Ocean, at the edge of Night', lat: 30.5, lng: -15.5, rank: 1,
+    story: 'Perseus',
     foe: 'Perseus, with Athena’s polished shield',
     source: 'Hesiod, Theogony 274–283 · Apollodorus 2.4.2',
     lore: 'The one mortal sister among the three Gorgons, with serpents for hair and a gaze that turned anyone who met it to stone. Perseus took her head by watching her reflection in a polished shield, and the winged horse Pegasus sprang from her neck.',
@@ -47,6 +52,7 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'cetus', name: 'Cetus', greek: 'Κῆτος Αἰθιοπικός', translit: 'Kêtos Aithiopikós', epithet: 'The sea monster of Aethiopia',
     place: 'Off the rocks of Joppa (Jaffa)', lat: 32.3, lng: 34.35, rank: 1,
+    story: 'Perseus and Andromeda',
     foe: 'Perseus',
     source: 'Apollodorus 2.4.3 · Ovid, Metamorphoses 4.663–739 · Strabo 16.2.28',
     lore: 'Poseidon sent the ketos to ravage the coast after Queen Cassiopeia boasted she was lovelier than the sea-nymphs. Her daughter Andromeda was chained to a rock at Joppa as its meal until Perseus killed it. Hollywood calls it the Kraken. The Greeks called it a ketos, and the constellation Cetus still swims beside Andromeda.',
@@ -54,6 +60,7 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'sirens', name: 'The Sirens', greek: 'Σειρῆνες', translit: 'Seirênes', epithet: 'Singers of the flowering meadow',
     place: 'The Sirenusai islets, off the Amalfi coast', lat: 40.58, lng: 14.43, rank: 1,
+    story: 'Homer’s Odyssey',
     foe: 'Odysseus, bound to his own mast',
     source: 'Homer, Odyssey 12.39–54, 12.158–200',
     lore: 'Painted on vases as birds with women’s heads, they sang from a meadow heaped with the bones of men who stopped to listen, promising to tell a sailor everything that happens on the earth. Odysseus stopped his crew’s ears with beeswax and had himself lashed to the mast so he could hear the song and live.',
@@ -61,13 +68,15 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'scylla', name: 'Scylla & Charybdis', greek: 'Σκύλλα καὶ Χάρυβδις', translit: 'Skúlla kai Khárubdis', epithet: 'The strait of two evils',
     place: 'The Strait of Messina', lat: 38.25, lng: 15.64, rank: 1,
+    story: 'Homer’s Odyssey',
     foe: 'None. Odysseus only got past them.',
     source: 'Homer, Odyssey 12.73–126, 12.234–259',
     lore: 'Scylla had six heads on long necks, each with three rows of teeth, and snatched six of Odysseus’ men from the deck. Across the strait, Charybdis sucked down the sea three times a day and spewed it out again. Odysseus chose to lose six men to Scylla rather than his whole ship to the whirlpool.',
   },
   {
     kind: 'monster', id: 'polyphemus', name: 'Polyphemus', greek: 'Πολύφημος', translit: 'Polúphēmos', epithet: 'The Cyclops',
-    place: 'Island of the Cyclopes, by tradition Sicily below Etna', lat: 37.56, lng: 15.17, rank: 2,
+    place: 'Island of the Cyclopes, by tradition Sicily below Etna', lat: 37.56, lng: 15.12, rank: 2, // Aci Castello, above the rocks he hurled
+    story: 'Homer’s Odyssey',
     foe: 'Odysseus, calling himself “Nobody”',
     source: 'Homer, Odyssey 9.105–566',
     lore: 'A one-eyed shepherd, son of Poseidon, who shut Odysseus’ men in his cave and ate them two at a time. Odysseus gave his name as “Nobody”, made him drunk on unmixed wine and blinded him with a sharpened olive stake, then slipped out clinging under his rams. The Cyclops prayed to his father for revenge, which is why the voyage home took ten years.',
@@ -75,6 +84,7 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'minotaur', name: 'Minotaur', greek: 'Μινώταυρος', translit: 'Minṓtauros', epithet: 'The bull of Minos',
     place: 'The Labyrinth at Knossos, Crete', lat: 35.3, lng: 25.16, rank: 1,
+    story: 'Theseus',
     foe: 'Theseus, with Ariadne’s thread',
     source: 'Apollodorus 3.1.4, Epitome 1.7–9 · Plutarch, Theseus 15–19',
     lore: 'Son of Queen Pasiphaë and a bull from the sea, shut in the Labyrinth that Daedalus built for King Minos. Athens sent seven youths and seven maidens to be eaten until Theseus killed him and found his way out by the thread Ariadne gave him.',
@@ -82,20 +92,23 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'hydra', name: 'Lernaean Hydra', greek: 'Λερναία Ὕδρα', translit: 'Lernaía Húdra', epithet: 'Water serpent of the swamp',
     place: 'The springs of Lerna, in the Argolid', lat: 37.55, lng: 22.72, rank: 2,
+    story: 'The Labours of Heracles',
     foe: 'Heracles and Iolaus (the Second Labour)',
     source: 'Hesiod, Theogony 313–318 · Apollodorus 2.5.2',
     lore: 'A nine-headed serpent whose middle head could not die. Each time Heracles cut off a head, two grew back, so his nephew Iolaus seared every stump with a torch. Heracles buried the immortal head under a rock and dipped his arrows in the Hydra’s poisonous blood.',
   },
   {
     kind: 'monster', id: 'cerberus', name: 'Cerberus', greek: 'Κέρβερος', translit: 'Kérberos', epithet: 'The hound of Hades',
-    place: 'Cape Tainaron, a gateway to the underworld', lat: 36.39, lng: 22.48, rank: 2,
+    place: 'Cape Tainaron, a gateway to the underworld', lat: 36.48, lng: 22.43, rank: 2, // on the Mani peninsula just above the cape tip, which even the 1:50m map draws as sea
+    story: 'The Labours of Heracles',
     foe: 'Heracles (the Twelfth Labour)',
     source: 'Hesiod, Theogony 310–312, 769–774 · Apollodorus 2.5.12',
     lore: 'Watchdog at the gates of Hades, who fawns on the dead as they enter and eats anyone who tries to leave. Hesiod gives him fifty heads; later poets settled on three, with a serpent’s tail. For his last Labour, Heracles carried him up into daylight through the cave at Tainaron.',
   },
   {
     kind: 'monster', id: 'keres', name: 'The Keres', greek: 'Κῆρες', translit: 'Kêres', epithet: 'Spirits of violent death',
-    place: 'The plain of Troy', lat: 39.9, lng: 26.32, rank: 2,
+    place: 'The plain of Troy', lat: 39.957, lng: 26.239, rank: 2,
+    story: 'Homer’s Iliad',
     foe: 'Unbeaten. Each warrior’s own Ker came for him in the end.',
     source: 'Homer, Iliad 18.535–538 · Hesiod, Shield of Heracles 248–257',
     lore: 'Daughters of Night who haunt battlefields. Homer puts one on the shield of Achilles, dragging a dead man through the fighting by his feet, her cloak red with men’s blood. In Hesiod they gnash white teeth and claw at one another over every man who falls. We set them on the plain of Troy, the greatest battle of the heroic age.',
@@ -103,6 +116,7 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'chimera', name: 'Chimera', greek: 'Χίμαιρα', translit: 'Khímaira', epithet: 'The fire-breather of Lycia',
     place: 'Mount Chimaera in Lycia, where the rocks still burn', lat: 36.43, lng: 30.46, rank: 2,
+    story: 'Bellerophon',
     foe: 'Bellerophon, riding Pegasus',
     source: 'Homer, Iliad 6.179–183 · Hesiod, Theogony 319–325',
     lore: 'A lion in front, a serpent behind and a she-goat in the middle, breathing fire. Bellerophon shot her down from the back of Pegasus. Natural gas still burns from the rocks at Yanartaş, the place ancient writers linked to her.',
@@ -110,6 +124,7 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'ladon', name: 'Ladon', greek: 'Λάδων', translit: 'Ládōn', epithet: 'Guardian of the golden apples',
     place: 'Garden of the Hesperides, beneath Atlas', lat: 31.2, lng: -7.2, rank: 2,
+    story: 'The Labours of Heracles',
     foe: 'Heracles (the Eleventh Labour)',
     source: 'Hesiod, Theogony 333–335 · Apollonius, Argonautica 4.1396–1407',
     lore: 'An unsleeping serpent coiled round the tree of golden apples that Earth gave Hera as a wedding gift, in the garden of the nymphs of evening at the western edge of the world. Heracles took the apples; the Argonauts arrived the next day to find the serpent dead beneath the tree.',
@@ -117,20 +132,23 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'dragon', name: 'Colchian Dragon', greek: 'Δράκων Κόλχος', translit: 'Drákōn Kólkhos', epithet: 'Warden of the Golden Fleece',
     place: 'The grove of Ares, Colchis', lat: 42.2, lng: 41.9, rank: 1,
+    story: 'Jason and the Argonauts',
     foe: 'Jason, with Medea’s spells',
     source: 'Apollonius, Argonautica 4.123–166 · Pindar, Pythian 4.244–246',
     lore: 'A serpent that never slept, coiled round the oak where the Golden Fleece hung. Pindar says it was longer than a fifty-oared ship. Medea sang it to sleep and sprinkled its eyes with a potion while Jason lifted the Fleece from the branch.',
   },
   {
     kind: 'monster', id: 'griffins', name: 'Griffins', greek: 'Γρῦπες', translit: 'Grûpes', epithet: 'Gold-guards of the far north-east',
-    place: 'Beyond Scythia, by the Altai gold fields', lat: 49.5, lng: 87, rank: 1,
+    place: 'Beyond Scythia: the Mongolian Altai, at the edge of the Gobi', lat: 46.4, lng: 93.6, rank: 1,
+    story: 'Herodotus’ Histories',
     foe: 'The one-eyed Arimaspians, forever',
     source: 'Herodotus, Histories 3.116, 4.13, 4.27 · Aeschylus, Prometheus Bound 803–806',
-    lore: 'Eagle-headed lions that guard the gold of the far north-east against the one-eyed Arimaspians, who keep trying to steal it. Herodotus heard the story secondhand and doubted it. Some modern scholars link the legend to Scythian gold miners finding beaked dinosaur skulls in the deserts of Central Asia.',
+    lore: 'Eagle-headed lions that guard the gold of the far north-east against the one-eyed Arimaspians, who keep trying to steal it. Herodotus heard the story secondhand and doubted it. Some modern scholars link the legend to gold prospectors on the caravan routes finding beaked dinosaur skulls in the Gobi.',
   },
   {
     kind: 'monster', id: 'phoenix', name: 'Phoenix', greek: 'Φοῖνιξ', translit: 'Phoînix', epithet: 'Bird of the Sun',
     place: 'Heliopolis, the City of the Sun, Egypt', lat: 30.13, lng: 31.3, rank: 2,
+    story: 'Herodotus’ Histories',
     foe: 'None. It outlives everyone.',
     source: 'Herodotus, Histories 2.73',
     lore: 'The priests of Heliopolis told Herodotus of a sacred bird, red and gold and shaped like an eagle, that came from Arabia once every five hundred years, carrying its dead father sealed in an egg of myrrh to the temple of the Sun. He admits he only ever saw it in a painting. Rebirth from fire is a later addition.',
@@ -138,6 +156,7 @@ export const MONSTERS: Monster[] = [
   {
     kind: 'monster', id: 'sphinx', name: 'Sphinx', greek: 'Σφίγξ', translit: 'Sphínx', epithet: 'The strangler of Thebes',
     place: 'Mount Phikion, above Thebes', lat: 38.42, lng: 23.3, rank: 3,
+    story: 'Oedipus',
     foe: 'Oedipus, who answered her riddle',
     source: 'Hesiod, Theogony 326 · Sophocles, Oedipus Tyrannus · Apollodorus 3.5.8',
     lore: 'A winged lion with a woman’s head who sat on a rock outside Thebes and devoured everyone who failed her riddle: what walks on four feet, then two, then three? Oedipus answered “man”, and she threw herself from the rock. The Naxians set up her statue on an Ionic column at Delphi.',

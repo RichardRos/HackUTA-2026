@@ -12,18 +12,23 @@ class CommodityFuturesTest(unittest.TestCase):
     def setUp(self):
         world_data.commodity_futures.cache_clear()
 
-    def test_same_unit_pair_gets_spread(self):
-        fake = {"BZ=F": ("USD", closes(100, 95)), "CL=F": ("USD", closes(90, 88))}
+    def test_brent_wti_spread_with_physical_units(self):
+        fake = {"BZ=F": ("USD", closes(100, 95)), "CL=F": ("USD", closes(90, 88)), "DBL=F": (None, closes(94, 93)),
+                "HO=F": ("USD", closes(4, 4)), "RB=F": ("USD", closes(2.5, 2.6))}
         with patch.object(world_data, "_yahoo_closes", side_effect=lambda s, d: fake[s]):
             out = world_data.commodity_futures("oil")
-        self.assertEqual(out["spread"], {"name": "Brent - WTI", "value": 7.0, "unit": "USD"})
-        self.assertEqual([c["settlement"] for c in out["contracts"]], ["cash", "physical"])
-        self.assertEqual(out["contracts"][0]["change_pct"], -5.0)
+        self.assertEqual(out["spread"], {"name": "Brent crude - WTI crude", "value": 7.0, "unit": "USD/bbl"})
+        by = {c["symbol"]: c for c in out["contracts"]}
+        self.assertEqual(by["DBL=F"]["unit"], "USD/bbl")  # Yahoo omits Dubai's currency; NYMEX lists it in USD
+        self.assertEqual(by["HO=F"]["unit"], "USD/gal")
+        self.assertEqual(by["BZ=F"]["change_pct"], -5.0)
 
-    def test_mixed_units_get_no_spread(self):
-        fake = {"TTF=F": ("EUR", closes(30, 31)), "NG=F": ("USD", closes(3, 3.2))}
+    def test_no_spread_across_gas_hubs(self):
+        fake = {"TTF=F": ("EUR", closes(30, 31)), "NG=F": ("USD", closes(3, 3.2)), "JKM=F": (None, closes(11, 12))}
         with patch.object(world_data, "_yahoo_closes", side_effect=lambda s, d: fake[s]):
-            self.assertIsNone(world_data.commodity_futures("natural-gas")["spread"])
+            out = world_data.commodity_futures("natural-gas")
+        self.assertIsNone(out["spread"])
+        self.assertEqual({c["unit"] for c in out["contracts"]}, {"EUR/MWh", "USD/MMBtu"})
 
     def test_unknown_commodity_rejected(self):
         with self.assertRaises(ValueError):
@@ -74,3 +79,50 @@ class SovereignCurveTest(unittest.TestCase):
         self.assertIn("euro-area", ee["source"])
         with self.assertRaises(ValueError):
             world_data.sovereign_curve("Chad")
+
+
+class StoredTest(unittest.TestCase):
+    def test_fresh_stale_retry_and_max_age(self):
+        calls, fail = [], []
+
+        @world_data.stored(ttl=100, max_age=1000, mark_stale=True)
+        def grid():
+            calls.append(1)
+            if fail:
+                raise RuntimeError("upstream down")  # any exception, not only httpx
+            return {"v": len(calls)}
+
+        clock = [0.0]
+        with patch.object(world_data.time, "time", lambda: clock[0]):
+            self.assertEqual(grid(), {"v": 1})
+            clock[0] = 50
+            self.assertEqual(grid(), {"v": 1})                  # fresh: no call
+            self.assertEqual(len(calls), 1)
+            fail.append(1)
+            clock[0] = 150
+            self.assertEqual(grid(), {"v": 1, "stale": True})   # refresh failed: last good, marked
+            clock[0] = 300
+            grid()
+            self.assertEqual(len(calls), 2)                     # within RETRY_AFTER: upstream not called again
+            clock[0] = 150 + world_data.RETRY_AFTER + 1
+            grid()
+            self.assertEqual(len(calls), 3)                     # retry window over: tries again
+            clock[0] = 2000
+            with self.assertRaises(RuntimeError):               # older than max_age: no stale fallback
+                grid()
+
+    def test_keyed_dicts_and_lists_are_never_marked(self):
+        ok = []
+
+        @world_data.stored(ttl=1, max_age=1000)
+        def stations():
+            if ok:
+                raise RuntimeError("down")
+            ok.append(1)
+            return {"8443970": {"station": "Boston"}}
+
+        clock = [0.0]
+        with patch.object(world_data.time, "time", lambda: clock[0]):
+            stations()
+            clock[0] = 5
+            self.assertEqual(stations(), {"8443970": {"station": "Boston"}})  # no "stale" key polluting the mapping

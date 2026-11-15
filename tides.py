@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from world_data import TIMEOUT, keep_last, ttl_cache
+from world_data import TIMEOUT, stored
 
 API = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter"
 STATIONS = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json"
@@ -178,8 +178,7 @@ def _noaa_station(s: dict, kind: str) -> dict:
             "kind": kind, "datum": DATUM, "source": "NOAA CO-OPS"}
 
 
-@ttl_cache(24 * 3600)
-@keep_last
+@stored(ttl=24 * 3600, max_age=7 * 24 * 3600)
 def tide_stations() -> list[dict]:
     """NOAA tidal gauges (Great Lakes have no tides), then harmonic prediction stations that fill gaps."""
     gauges = [_noaa_station(s, "gauge") for s in _get(STATIONS, {"type": "waterlevels"}).get("stations", [])
@@ -238,8 +237,7 @@ def turns(series: list[dict], min_swing: float = MIN_SWING_M) -> list[dict]:
     return found
 
 
-@ttl_cache(6 * 3600)
-@keep_last
+@stored(ttl=6 * 3600, max_age=24 * 3600)
 def _model_tides() -> dict[str, dict]:
     """Hourly modelled sea level for GLOBAL_POINTS, yesterday through +2 days, keyed by station id."""
     out: dict[str, dict] = {}
@@ -286,8 +284,7 @@ def _station_events(station: dict, begin: datetime, end: datetime) -> dict | Non
     return {**station, "events": events} if len(events) >= 2 else None
 
 
-@ttl_cache(6 * 3600)
-@keep_last
+@stored(ttl=6 * 3600, max_age=24 * 3600, mark_stale=True)
 def _overview() -> dict:
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     begin, end = today - timedelta(days=1), today + timedelta(days=3) - timedelta(minutes=1)
@@ -323,8 +320,7 @@ def tide_overview() -> dict:
             "stations": [{**s, "now": tide_now(s["events"], now)} for s in base["stations"]]}
 
 
-@ttl_cache(600)
-@keep_last
+@stored(ttl=600, max_age=3600, mark_stale=True)
 def tide_station(station_id: str) -> dict:
     """Predicted curve, observed level (NOAA gauges only) and high/low turns, 24 h ago to 48 h ahead."""
     if not re.fullmatch(STATION_ID, station_id):
