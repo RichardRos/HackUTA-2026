@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
-import api
+from api import main as api
 from fastmcp.server.auth.auth import AccessToken
 
 

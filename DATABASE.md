@@ -17,7 +17,7 @@ Set `TIMESCALE_SERVICE_URL` in the root `.env`. `db/run_sql.py:get_url()` also h
 Apply the real schema:
 
 ```powershell
-python db/run_sql.py db/01_schema.sql db/03_scoreboard.sql db/04_backtest.sql db/05_api.sql db/06_prediction_markets.sql db/07_rss_feeds.sql db/08_open_observations.sql db/09_ingest_monitoring.sql db/10_news_tags.sql
+python db/run_sql.py db/01_schema.sql db/03_scoreboard.sql db/04_backtest.sql db/05_api.sql db/06_national_noaa.sql db/07_assistant.sql db/08_prediction_markets.sql db/09_rss_feeds.sql db/10_open_observations.sql db/11_ingest_monitoring.sql db/12_news_tags.sql
 ```
 
 `02_seed_fake.sql` is optional demo data. Do not load it into a production run. `99_clear_fake.sql` deletes that tagged fake dataset; inspect it before running.
@@ -57,7 +57,7 @@ Current tables are upserted idempotently. Raw source payloads are retained witho
 Workers receive one pinned `TIMESCALE_SERVICE_URL`, so monitoring and ingestion cannot target different databases. Sessions require a direct connection or session-mode pooler for the advisory lock; transaction-mode PgBouncer is unsuitable.
 
 ```powershell
-python db/run_sql.py db/09_ingest_monitoring.sql
+python db/run_sql.py db/11_ingest_monitoring.sql
 python ingest_service.py start --host 127.0.0.1 --port 8001
 ```
 
@@ -246,7 +246,7 @@ Existing `mcp_server.py` exposes forecast, grid, weather, market, and news tools
 FastAPI/FastMCP startup:
 
 ```powershell
-uvicorn api:app --host 127.0.0.1 --port 8000
+uvicorn api.main:app --host 127.0.0.1 --port 8000
 # Docs: http://127.0.0.1:8000/docs
 # MCP: http://127.0.0.1:8000/mcp
 # Liveness: http://127.0.0.1:8000/health

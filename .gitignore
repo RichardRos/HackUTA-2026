@@ -5,3 +5,9 @@
 # python
 __pycache__/
 .venv/
+.pytest_cache/
+
+# local agent tooling
+.agents/
+.claude/skills/
+web/.taste-skill/

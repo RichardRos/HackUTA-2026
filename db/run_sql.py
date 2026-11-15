@@ -7,8 +7,9 @@ Usage:
     python db/run_sql.py db/01_schema.sql [more.sql ...]
     python db/run_sql.py -c "SELECT count(*) FROM grid_hourly"
 
-Connection: TIMESCALE_SERVICE_URL from the environment, or from NOSTOS_ENV,
-the repository's .env, or the legacy ../Research credentials file.
+Connection: TIMESCALE_SERVICE_URL from the environment, else from the .env file
+named by NOSTOS_ENV (default: ../Research/tiger-cloud-db-nostos_weather-credentials.env
+relative to the repo root), else from the repo-root .env.
 """
 import os
 import sys
@@ -18,17 +19,18 @@ import psycopg
 from dotenv import load_dotenv
 
 REPO = Path(__file__).resolve().parent.parent
-ROOT_ENV = REPO / ".env"
 DEFAULT_ENV = REPO.parent / "Research" / "tiger-cloud-db-nostos_weather-credentials.env"
 
 
 def get_url() -> str:
-    if not os.getenv("TIMESCALE_SERVICE_URL"):
-        default_env = ROOT_ENV if ROOT_ENV.exists() else DEFAULT_ENV
-        load_dotenv(os.getenv("NOSTOS_ENV", default_env))
+    if not os.getenv("TIMESCALE_SERVICE_URL", "").strip():
+        os.environ.pop("TIMESCALE_SERVICE_URL", None)
+        load_dotenv(os.getenv("NOSTOS_ENV", DEFAULT_ENV))
+        load_dotenv(REPO / ".env")
     url = os.getenv("TIMESCALE_SERVICE_URL")
     if not url:
-        sys.exit("TIMESCALE_SERVICE_URL not set and no .env found (set NOSTOS_ENV).")
+        sys.exit(f"TIMESCALE_SERVICE_URL not set. Add it to {REPO / '.env'} "
+                 "(or export it, or set NOSTOS_ENV to another .env file).")
     return url
 
 

@@ -18,7 +18,7 @@ python db/run_sql.py -c "SELECT * FROM scoreboard_summary"
 | **MCP / app** (current forecast) | `latest_forecast WHERE ba_code = 'ERCO'` |
 | **MCP / app** (scoreboard) | `scoreboard_summary` (headline numbers), `scoreboard_daily` (chart), `scoreboard_by_lead` |
 | **Backtest results** | `backtest_monthly`, `backtest_by_hour` |
-| **Raw data** | `grid_hourly` (EIA D / DF / NG / TI), `grid_fuel_hourly`, `weather_forecasts`, `weather_actuals`, `grid_daily` (daily rollup) |
+| **Raw data** | `grid_hourly` (EIA D / DF for every BA, region and US48), `grid_subba_hourly` (sub-BA zones), `grid_fuel_hourly`, `weather_forecasts` (NOAA NBM + NWS), `weather_actuals` (NOAA GHCNh + NWS obs), `grid_daily` / `grid_subba_daily` (daily rollups). How they're filled: `ingest/README.md`. |
 | **Before the demo** | `data_integrity_checks`: every row must show 0 |
 
 **Scoreboard fairness rule:** a nostos prediction is compared with EIA's day-ahead forecast only if it was issued **before the operating day started** (local midnight). Shorter-lead predictions are still stored, but they appear only in `scoreboard_by_lead`.
@@ -31,10 +31,13 @@ python db/run_sql.py -c "SELECT * FROM scoreboard_summary"
 | `03_scoreboard.sql` | Fair head-to-head scoreboard views |
 | `04_backtest.sql` | Backtest views and integrity checks |
 | `05_api.sql` | Latest-run index and `latest_forecast` view |
-| `06_prediction_markets.sql` | Normalized Kalshi/Polymarket markets and outcomes |
-| `07_rss_feeds.sql` | WSJ + FT RSS feeds: `rss_feeds` (latest raw XML) and `rss_articles` (normalized, idempotent) |
-| `08_open_observations.sql` | NOAA/FRED/CFTC/port-condition/freight-rate time-series observations |
-| `09_ingest_monitoring.sql` | Ingest runs, retries/DLQ, data checks, and service health |
+| `06_national_noaa.sql` | National EIA (`balancing_authorities.kind`, `grid_subba_hourly`, `eia_subbas`), NOAA weather columns + `extra` JSONB, station ids on `weather_points`, widened integrity checks. Supersedes the Open-Meteo notes in `01_schema.sql`. |
+| `07_assistant.sql` | `assistant_requests` queue for the website assistant (see `api/README.md`) |
+| `08_prediction_markets.sql` | Normalized Kalshi/Polymarket markets and outcomes |
+| `09_rss_feeds.sql` | WSJ + FT RSS feeds: `rss_feeds` (latest raw XML) and `rss_articles` (normalized, idempotent) |
+| `10_open_observations.sql` | NOAA/FRED/CFTC/port-condition/freight-rate time-series observations |
+| `11_ingest_monitoring.sql` | Ingest runs, retries/DLQ, data checks, and service health |
+| `12_news_tags.sql` | `rss_articles.tags` (feed sections + keyword topics, GIN index) |
 | `99_clear_fake.sql` | Deletes the fake data. **Run it BEFORE the real backfill.** |
 
 `run_sql.py` runs each statement with autocommit, like `psql -f`. Continuous aggregates can't be created inside a transaction.
