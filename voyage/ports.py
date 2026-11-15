@@ -3,6 +3,10 @@
 Port coordinates are the harbour itself; the router snaps each to the nearest navigable grid cell.
 """
 
+# River harbours whose nearest grid water is the wrong sea: route from their real sea approach instead.
+# Hamburg is 85 km up the Elbe; snapping the harbour picks Lübeck Bay on the Baltic, which drew a land crossing.
+APPROACH = {(53.54, 9.97): (53.9, 8.7)}  # Hamburg -> Elbe mouth off Cuxhaven
+
 # (id, name, country, lat, lon)
 PORTS = [
     # East Asia

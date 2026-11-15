@@ -43,6 +43,7 @@ export type Voyage = {
   hours_above_limit: number
   beyond_forecast_pct: number
   eta_band: { early: string; late: string }
+  conditions_source: string
   stops: Place[]
   legs: Leg[]
   model: { trained_at?: string; rows?: number; real_rows?: number; cv_r2?: number; cv_rmse?: number

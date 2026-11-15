@@ -210,7 +210,9 @@ export default function VoyagePanel({ greekMode, picked, picking, onPicking, onR
             <div><dt>Worst seas</dt><dd>{result.max_hs_m.toFixed(1)} m</dd>
               <span className="micro">{result.hours_above_limit > 0 ? `${fmtDuration(result.hours_above_limit)} above the ${result.vessel.hs_limit_m} m limit` : `limit ${result.vessel.hs_limit_m} m`}</span></div>
           </dl>
-          {result.beyond_forecast_pct > 0 && (
+          {result.conditions_source.startsWith('Forecast unavailable')
+            ? <p className="micro error" role="status">The forecast provider is rate-limiting us, so this route assumes a calm sea. Try again in a minute for weather-aware timing.</p>
+            : result.beyond_forecast_pct > 0 && (
             <p className="micro">{Math.round(result.beyond_forecast_pct)}% of the route is past the ~9-day marine forecast; conditions there hold the last forecast.</p>
           )}
 

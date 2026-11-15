@@ -11,7 +11,7 @@ from fastmcp.server.auth.auth import AccessToken
 from voyage import conditions, router, storage
 from voyage.grid import ocean
 from voyage.model import VESSELS, features, fit_speed_model, kwon_factor, synthetic, trireme_factor
-from voyage.ports import ODYSSEY_STOPS, PORTS_BY_ID
+from voyage.ports import APPROACH, ODYSSEY_STOPS, PORTS_BY_ID
 
 
 class PhysicsModel:
@@ -54,6 +54,11 @@ class GridTest(unittest.TestCase):
             node = g.snap(place["lat"], place["lon"])
             self.assertIsNotNone(node, place["name"])
             self.assertEqual(g.component[node], main, place["name"])
+
+    def test_hamburg_routes_from_the_north_sea_not_the_baltic(self):
+        g = ocean()
+        lat, lon = g.latlon(g.snap(*APPROACH[(53.54, 9.97)]))
+        self.assertLess(lon, 9.5)  # west of Schleswig-Holstein: the Elbe side, reached via Kiel or Skagen
 
     def test_suez_is_a_link_and_land_is_not_crossed(self):
         g = ocean()
@@ -132,6 +137,17 @@ class RouterTest(unittest.TestCase):
         r = self.plan(box)
         self.assertAlmostEqual(r["duration_h"], calm["duration_h"], delta=0.5)
         self.assertLess(r["max_hs_m"], 2)
+
+    def test_rate_limited_forecast_plans_on_a_calm_sea_and_is_not_cached(self):
+        router._cache.clear()
+        limited = MagicMock(side_effect=conditions.RateLimited("429"))
+        with patch.object(conditions, "field", limited):
+            r = router.plan(mode="ports", vessel_id="container", start_port="grpir", end_port="esvlc",
+                            model=PhysicsModel(VESSELS["container"]))
+        self.assertTrue(r["conditions_source"].startswith("Forecast unavailable"))
+        self.assertFalse(r["legs"][0]["forecast"])
+        self.assertGreater(r["distance_nm"], 1000)
+        self.assertEqual(router._cache, {})  # retried with a real forecast next time
 
     def test_odyssey_visits_every_stop_in_order(self):
         router._cache.clear()

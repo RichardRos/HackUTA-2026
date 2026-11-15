@@ -20,12 +20,13 @@ import threading
 import time
 from datetime import datetime, timedelta
 
+import httpx
 import numpy as np
 
 from voyage import conditions
 from voyage.grid import TRANSIT_HOURS, OceanGrid, haversine_nm, ocean
 from voyage.model import VESSELS, SpeedModel, Vessel, features
-from voyage.ports import ODYSSEY_STOPS, PORTS_BY_ID
+from voyage.ports import APPROACH, ODYSSEY_STOPS, PORTS_BY_ID
 
 HEADINGS = 16
 CORRIDOR_DEG = 5.0  # search this far either side of the shortest path
@@ -205,8 +206,8 @@ def _thin(points: list[dict], keep: int = 500) -> list[dict]:
 def route_leg(start: tuple[float, float], end: tuple[float, float], vessel: Vessel, depart: datetime,
               model: SpeedModel, kn: float | None = None) -> dict:
     g = ocean()
-    a = g.snap(*start)
-    b = g.snap(*end)
+    a = g.snap(*APPROACH.get(start, start))
+    b = g.snap(*APPROACH.get(end, end))
     if a is None:
         raise ValueError(f"start {start[0]:.2f}, {start[1]:.2f} is not within 200 km of navigable sea")
     if b is None:
@@ -224,7 +225,11 @@ def route_leg(start: tuple[float, float], end: tuple[float, float], vessel: Vess
     est_h = base_nm / (vessel.service_kn * 0.85) + 1
 
     # Forecast for the corridor; each lattice cell is weighted toward when the baseline passes it.
-    field = conditions.field(conditions.corridor(base_ll, radius_deg=CORRIDOR_DEG + 1), depart)
+    corridor = conditions.corridor(base_ll, radius_deg=CORRIDOR_DEG + 1)
+    try:
+        field, forecast = conditions.field(corridor, depart), True
+    except (conditions.RateLimited, httpx.HTTPError):  # provider throttled or down: plan on a calm sea, flagged
+        field, forecast = conditions.calm(corridor, depart), False
     if not field.is_sea.any():
         raise ValueError("no marine forecast along this route")
     cum = np.concatenate([[0.0], np.cumsum([haversine_nm(*p, *q) for p, q in zip(base_ll, base_ll[1:])])])
@@ -288,6 +293,7 @@ def route_leg(start: tuple[float, float], end: tuple[float, float], vessel: Vess
     nm_total = sailed_nm
     first, last = {"lat": start[0], "lon": start[1]}, {"lat": end[0], "lon": end[1]}
     return {
+        "forecast": forecast,
         "depart": depart.isoformat(), "arrive": (depart + timedelta(hours=hours)).isoformat(),
         "duration_h": round(hours, 1), "distance_nm": round(nm_total, 1),
         "eta_band": {"early": (depart + timedelta(hours=early)).isoformat(),
@@ -370,8 +376,10 @@ def plan(*, mode: str, vessel_id: str, start: tuple[float, float] | None = None,
                      "late": (arrive + sum((datetime.fromisoformat(leg["eta_band"]["late"]) - datetime.fromisoformat(leg["arrive"])
                                            for leg in legs), timedelta())).isoformat()},
         "stops": stops, "legs": legs, "model": _model_summary(model),
-        "conditions_source": "Open-Meteo forecast: waves, ocean currents (marine) and 10 m wind",
+        "conditions_source": "Open-Meteo forecast: waves, ocean currents (marine) and 10 m wind"
+        if all(leg["forecast"] for leg in legs) else "Forecast unavailable (provider rate limit): calm-sea estimate",
     }
-    with _cache_lock:
-        _cache[key] = (time.monotonic(), result)
+    if all(leg["forecast"] for leg in legs):  # a calm-sea fallback is retried next time, not cached
+        with _cache_lock:
+            _cache[key] = (time.monotonic(), result)
     return result

@@ -191,6 +191,15 @@ def field(points: list[tuple[float, float]], t0: datetime | None = None) -> Fiel
                  horizon_h=-1 if stale else int(np.median(horizon)) if horizon else 0)
 
 
+def calm(points: list[tuple[float, float]], t0: datetime | None = None, hours: int = 24 * 14) -> Field:
+    """Neutral sea (no waves, wind or current) when the forecast can't be fetched: the route still plans on
+    distance and the vessel's service speed, and every hour counts as beyond the forecast."""
+    z = np.zeros((len(points), hours))
+    return Field(t0=(t0 or datetime.now(timezone.utc)).replace(minute=0, second=0, microsecond=0),
+                 points=np.array(points, dtype=float), hs=z, tp=z + 6.0, wave_from=z, wind=z, wind_from=z,
+                 cur_u=z, cur_v=z, is_sea=np.ones(len(points), dtype=bool), horizon_h=-1)
+
+
 def depart_time(value: str | None) -> datetime:
     if not value:
         return datetime.now(timezone.utc)
