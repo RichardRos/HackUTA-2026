@@ -368,7 +368,7 @@ export default function CountryPanel({ country, onClose, mode = 'world', commodi
         </Card>
       ) : (
         <Card title="News">
-          {fromRundown(r?.news, 'No news returned.', (news) => !news.length ? <p className="muted">No WSJ or FT coverage in the last 14 days.</p> : (
+          {fromRundown(r?.news, 'No news returned.', (news) => !news.length ? <p className="muted">No WSJ or FT coverage in the last year.</p> : (
             <ul className="rows">
               {news.map((n) => (
                 <li key={n.id}>

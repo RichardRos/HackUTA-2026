@@ -884,14 +884,18 @@ def _terms(country: str) -> list[str]:
 
 def _country_news(country: str, limit: int = 12) -> list[dict]:
     patterns = [_like(t) for t in _terms(country)]
-    return _query(
-        "SELECT a.id, f.source, a.link, a.title, a.summary, a.published_at, a.tags "
-        "FROM rss_articles a JOIN rss_feeds f ON f.id = a.feed_id "
-        "WHERE a.published_at >= now() - interval '14 days' "
-        "AND (a.title ILIKE ANY(%s) OR a.summary ILIKE ANY(%s)) "
-        "ORDER BY a.published_at DESC LIMIT %s",
-        (patterns, patterns, limit),
-    )
+    for days in (14, 90, 365):  # quieter countries: widen the window rather than show an empty card
+        rows = _query(
+            "SELECT a.id, f.source, a.link, a.title, a.summary, a.published_at, a.tags "
+            "FROM rss_articles a JOIN rss_feeds f ON f.id = a.feed_id "
+            "WHERE a.published_at >= now() - (%s * interval '1 day') "
+            "AND (a.title ILIKE ANY(%s) OR a.summary ILIKE ANY(%s)) "
+            "ORDER BY a.published_at DESC LIMIT %s",
+            (days, patterns, patterns, limit),
+        )
+        if rows:
+            return rows
+    return []
 
 
 def _country_markets(country: str, limit: int = 8) -> list[dict]:
