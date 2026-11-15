@@ -76,13 +76,21 @@ def window_stats(fc: pd.DataFrame, obs: pd.DataFrame, *, gap_days: int = 1,
     return fc.merge(stats, on=KEYS, how="left")
 
 
+def weights(fs: pd.DataFrame) -> pd.Series:
+    """Unnormalised inverse-MAE weight per model row.
+
+    A model without enough history gets the median weight of the others that day.
+    """
+    mae = fs["mae"].fillna(fs.groupby(DAY_KEYS)["mae"].transform("median")).fillna(1.0)
+    return 1.0 / mae.clip(lower=MAE_FLOOR)
+
+
 def blend(fs: pd.DataFrame) -> pd.DataFrame:
     """Combine per-model rows (with stats) into one row per location/lead/day per variant."""
     d = fs.copy()
     # A model without enough history: no correction, and the median weight of the others.
     d["corrected"] = d["high_f"] - d["bias"].fillna(0.0)
-    mae = d["mae"].fillna(d.groupby(DAY_KEYS)["mae"].transform("median")).fillna(1.0)
-    d["w"] = 1.0 / mae.clip(lower=MAE_FLOOR)
+    d["w"] = weights(d)
     d["wc"] = d["w"] * d["corrected"]
     out = d.groupby(DAY_KEYS).agg(
         issued_at=("issued_at", "first"),
@@ -116,7 +124,8 @@ def metrics(scored: pd.DataFrame, by: list[str]) -> pd.DataFrame:
 
 
 def splits():
-    end = pd.Timestamp(config.END_DATE)
+    """Fixed validation / test windows, anchored on config.TEST_END (not END_DATE)."""
+    end = pd.Timestamp(config.TEST_END)
     test_start = end - pd.Timedelta(days=TEST_DAYS - 1)
     val_start = test_start - pd.Timedelta(days=VAL_DAYS)
     return val_start, test_start, end

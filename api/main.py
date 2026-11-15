@@ -30,7 +30,7 @@ from fastmcp.server.auth.providers.jwt import JWTVerifier  # noqa: E402
 
 import mcp_server as tools  # noqa: E402
 import ships  # noqa: E402
-from api import ask, assistant, assistant_store  # noqa: E402
+from api import ask, assistant, assistant_store, wx_live  # noqa: E402
 from mcp_server import app as mcp_app  # noqa: E402
 
 CLERK_DOMAIN = os.getenv("CLERK_DOMAIN", "").removeprefix("https://").rstrip("/")
@@ -340,6 +340,7 @@ def health():
 app.include_router(ask.router)
 app.include_router(rest)
 app.include_router(assistant.make_router(require_user))
+app.include_router(wx_live.make_router(require_user))
 
 # The single Docker image ships the built React app here; local dev uses the Vite server instead.
 WEB_DIST = FilePath(__file__).resolve().parent.parent / "web" / "dist"
