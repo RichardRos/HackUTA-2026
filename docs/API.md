@@ -365,6 +365,20 @@ Hourly GFS series (same fields) for one `point_id` (a world city like `glb_londo
 
 GFS runs at 00/06/12/18Z and is ingested by `ingest/update.py --only gfs` (hourly GitHub Action). Points are listed in `ingest/global_points.py`.
 
+## Nostos weather model (daily highs)
+
+Reads Tiger schema `nostos_wx` (`locations`, `daily_high_obs`, `daily_high_forecasts`, `leaderboard_daily`) via `wx_scores.py`. Temperatures °F; dates are NWS climate days; lead 1 = issued the night before. `start`/`end` are dates (default: held-out test window 2026-09-14 → 2026-11-12); `lead_days` is 1–3. Check: lead 1 should give nostos 1.57, nbm_corrected 1.92, ncep_nbm_conus 2.31.
+
+| Dashboard section | REST | MCP tool | Rows |
+|---|---|---|---|
+| "The Bow" (leaderboard) | `GET /api/wx/leaderboard?lead_days=1` | `get_wx_leaderboard` | `lead_days, model, role, days, mae_f, bias_f, within_2f_pct`, best first |
+| "The Voyage" (error vs lead) | `GET /api/wx/leaderboard` (no `lead_days`) | same | all three leads |
+| Trend over time | `GET /api/wx/trend?lead_days=1&model=nostos&model=nbm_corrected` | `get_wx_weekly_trend` | `week, model, role, days, mae_f` |
+| "Ithaca" (one city) | `GET /api/wx/cities/austin?lead_days=1` | `get_wx_city` | `climate_date, observed_f, nostos_f, nbm_corrected_f, nbm_f` |
+| Map | `GET /api/wx/cities?model=nostos` | `get_wx_cities` | `location, station_id, latitude, longitude, kalshi_series, days, mae_f, bias_f` |
+
+`role` is `nostos`, `benchmark` (NBM), `input` (raw NWP models) or `baseline` (persistence).
+
 ## Flight tracker
 
 ### `get_flights_near`
