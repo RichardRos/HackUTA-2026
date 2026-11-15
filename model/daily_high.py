@@ -17,7 +17,8 @@ def main():
     daily = daily[daily["hours"] == 24].copy()
 
     day_start = pd.to_datetime(daily["climate_date"]).dt.tz_localize("UTC") - pd.to_timedelta(daily["std_utc_offset_hours"], unit="h")
-    daily["issued_at"] = day_start - pd.to_timedelta(daily["lead"] -1 , unit="h")
+    # issued at 23:00 local standard time on day D-lead: start of climate day - (lead-1) days - 1 hour
+    daily["issued_at"] = day_start - pd.to_timedelta(daily["lead"] - 1, unit="D") - pd.Timedelta(hours=1)
     daily = daily[["location", "model", "lead", "climate_date", "issued_at", "high_f"]]
     out = config.DATA_DIR / "forecasts_daily_high.parquet"
     daily.to_parquet(out, index=False)

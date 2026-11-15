@@ -29,12 +29,14 @@ def fetch_obs(row: pd.Series) -> pd.DataFrame:
     df = pd.DataFrame(records)
     if df.empty:
             raise RuntimeError(f"No climate reports for {row['station_id']}; check the station ID")
-    if not {"valid", "high"}.issubset(df.columns):
+    if not {"valid", "high", "product"}.issubset(df.columns):
             raise RuntimeError(f"Unexpected columns from IEM: {list(df.columns)}")
 
 
     df["climate_date"] = pd.to_datetime(df["valid"]).dt.date
 
+    # CLI product IDs start with the UTC issuance time, e.g. 202611130746-KEWX-CDUS44-CLIAUS
+    df["published_at"] = pd.to_datetime(df["product"].str[:12], format="%Y%m%d%H%M", utc=True)
     df["high_f"] = pd.to_numeric(df["high"], errors="coerce")
     df = df.dropna(subset=["high_f"])
     df = df[(df["climate_date"] >= start) & (df["climate_date"] <= end)]
@@ -42,7 +44,7 @@ def fetch_obs(row: pd.Series) -> pd.DataFrame:
 
     df["location"] = row["location"]
     df["station_id"] = row["station_id"]
-    return df[["location", "station_id", "climate_date", "high_f"]]
+    return df[["location", "station_id", "climate_date", "high_f", "published_at"]]
 
 
 def main():

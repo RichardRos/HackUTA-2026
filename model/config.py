@@ -11,8 +11,8 @@ BENCHMARK_MODELS = ["ncep_nbm_conus"]
 
 LEADS = [1,2,3]
 
-START_DATE = "2026-10-01"
-END_DATE = "2026-10-31"
+START_DATE = "2025-01-01"
+END_DATE = "2026-11-12"
 
 TEMP_UNIT = "fahrenheit"
 

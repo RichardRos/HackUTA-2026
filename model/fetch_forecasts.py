@@ -11,7 +11,7 @@ COLUMN_PATTERN = r"previous_day(\d+)_(.+)$"
 def get_with_retries(params: dict, attempts: int =5) -> dict:
     for attempt in range(attempts):
         try:
-            response = requests.get(URL, params=params, timeout=60)
+            response = requests.get(URL, params=params, timeout=180)
             if response.status_code == 200:
                 return response.json()
             if response.status_code != 429 and response.status_code < 500:
@@ -24,12 +24,24 @@ def get_with_retries(params: dict, attempts: int =5) -> dict:
     raise RuntimeError("Open-Metero request failed after retries")
 
 
-def fetch(row: pd.Series) -> pd.DataFrame:
+def quarters(start: str, end: str) -> list[tuple[str, str]]:
+    """Split [start, end] into calendar-quarter chunks (inclusive dates)."""
+    start_ts, end_ts = pd.Timestamp(start), pd.Timestamp(end)
+    chunks = []
+    cur = start_ts
+    while cur <= end_ts:
+        q_end = min((cur + pd.offsets.QuarterEnd(0)).normalize(), end_ts)
+        chunks.append((cur.strftime("%Y-%m-%d"), q_end.strftime("%Y-%m-%d")))
+        cur = q_end + pd.Timedelta(days=1)
+    return chunks
+
+
+def fetch_chunk(row: pd.Series, start: str, end: str) -> pd.DataFrame:
     params = {
         "latitude": row["lat"],
         "longitude": row["lon"],
-        "start_date": config.START_DATE,
-        "end_date": config.END_DATE,
+        "start_date": start,
+        "end_date": end,
         "hourly": ",".join(f"temperature_2m_previous_day{lead}" for lead in config.LEADS),
         "models": ",".join(config.MODELS + config.BENCHMARK_MODELS),
         "timezone": "UTC",
@@ -48,27 +60,33 @@ def fetch(row: pd.Series) -> pd.DataFrame:
     long = long.rename(columns={"time": "target_time"}).dropna(subset=["temp_f"])
     return long[["location", "model", "lead", "target_time", "temp_f"]]
 
-def main():
-    frames = []
-    for _, row in config.load_locations().iterrows():
-        print(f"Fetching forecasts for {row['location']} {config.START_DATE}..{config.END_DATE}")
-        frames.append(fetch(row))
+
+def fetch(row: pd.Series) -> pd.DataFrame:
+    parts = []
+    for start, end in quarters(config.START_DATE, config.END_DATE):
+        parts.append(fetch_chunk(row, start, end))
         time.sleep(0.5)
+    return pd.concat(parts, ignore_index=True)
 
-        df = pd.concat(frames, ignore_index=True)
-        out = config.DATA_DIR / "forecasts.parquet"
-        df.to_parquet(out, index=False)
 
-        print(f"saved {len(df):,} rows -> {out}")
-        print(df.groupby(["model", "lead"]).size().unstack())  # rows per model x lead
-        print(df.head())
+def main():
+    frames, failed = [], []
+    for _, row in config.load_locations().iterrows():
+        print(f"Fetching forecasts for {row['location']} {config.START_DATE}..{config.END_DATE}", flush=True)
+        try:
+            frames.append(fetch(row))
+        except Exception as exc:  # keep going; report at the end
+            print(f"  FAILED {row['location']}: {exc}", flush=True)
+            failed.append(row["location"])
+
+    df = pd.concat(frames, ignore_index=True)
+    out = config.DATA_DIR / "forecasts.parquet"
+    df.to_parquet(out, index=False)
+
+    print(f"saved {len(df):,} rows -> {out}")
+    print(df.groupby(["model", "lead"]).size().unstack())  # rows per model x lead
+    print(f"failed cities: {failed or 'none'}")
+
 
 if __name__ == "__main__":
     main()
-
-
-
-
-    
-    
-                

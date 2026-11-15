@@ -1,0 +1,13 @@
+lead,model,days,mae_f,bias_f,within_2f_pct
+1,avg_corrected,1200,1.55,-0.18,71.83
+1,avg_raw,1200,2.13,-0.98,53.75
+1,inv_mae_corrected,1200,1.53,-0.17,72.17
+2,avg_corrected,1200,1.85,-0.24,64.0
+2,avg_raw,1200,2.25,-0.73,53.42
+2,inv_mae_corrected,1200,1.82,-0.23,64.58
+3,avg_corrected,1200,2.06,-0.24,59.33
+3,avg_raw,1200,2.37,-0.77,51.17
+3,inv_mae_corrected,1200,2.04,-0.24,59.92
+all,avg_corrected,3600,1.82,-0.22,65.06
+all,avg_raw,3600,2.25,-0.83,52.78
+all,inv_mae_corrected,3600,1.8,-0.21,65.56
