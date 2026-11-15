@@ -223,7 +223,8 @@ export function tradingRegion(lat: number, lng: number): Region {
   if (lng >= 45 || (lat > 12 && lat < 37 && lng >= 34)) return 'gulf-asia' // Arabian Peninsula, Levant and Iraq price crude off Dubai
   return 'europe-africa'
 }
-// Contracts that only price one region. Everything else (metals, grains, softs) is a global exchange reference.
+// Single-location contracts that only price one region (substitutes above are picked by distance instead).
+// Everything else (metals, grains, softs) is a global exchange reference.
 const PRICES_REGION: Record<string, Region> = {
   'CL=F': 'americas', 'HO=F': 'americas', 'RB=F': 'americas', 'BZ=F': 'europe-africa', 'DBL=F': 'gulf-asia',
   'NG=F': 'americas', 'TTF=F': 'europe-africa', 'JKM=F': 'gulf-asia',
@@ -231,13 +232,37 @@ const PRICES_REGION: Record<string, Region> = {
   'HE=F': 'americas', 'LE=F': 'americas', 'GF=F': 'americas', 'DC=F': 'americas', 'CSC=F': 'americas',
 }
 
-/** Benchmarks that price the clicked point's region, plus global exchange references; every mapped
- *  contract without a location. When no contract covers the region, all are returned. */
+// Benchmarks that price the same thing in different places; a point uses only the nearest of each.
+const SUBSTITUTES: string[][] = [
+  ['BZ=F', 'CL=F', 'DBL=F'], // crude: Brent, WTI, Dubai
+  ['TTF=F', 'NG=F', 'JKM=F'], // gas: TTF, Henry Hub, JKM
+]
+
+/** Great-circle distance in km. */
+export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const rad = Math.PI / 180
+  const dLat = (b.lat - a.lat) * rad
+  const dLng = (b.lng - a.lng) * rad
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
+
+/** Benchmarks for the clicked point: of each set of substitutes (crude, gas) only the one whose pricing
+ *  point is nearest, plus the single-location contracts that price the point's region and the global
+ *  exchange references. Every mapped contract without a location; all of them when none fits. */
 export function regionalCommodityBenchmarks(contracts: Contract[], location: { lat: number; lng: number } | null): Contract[] {
   const mapped = contracts.filter((contract) => SITES[contract.symbol])
   if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) return mapped
+  const nearest = new Set<string>()
+  for (const group of SUBSTITUTES) {
+    const ranked = mapped.filter((c) => group.includes(c.symbol))
+      .sort((a, b) => distanceKm(location, SITES[a.symbol]) - distanceKm(location, SITES[b.symbol]))
+    if (ranked.length) nearest.add(ranked[0].symbol)
+  }
   const region = tradingRegion(location.lat, location.lng)
-  const fits = mapped.filter((c) => (PRICES_REGION[c.symbol] ?? region) === region)
+  const fits = mapped.filter((c) => SUBSTITUTES.some((g) => g.includes(c.symbol))
+    ? nearest.has(c.symbol)
+    : (PRICES_REGION[c.symbol] ?? region) === region)
   return fits.length ? fits : mapped
 }
 
