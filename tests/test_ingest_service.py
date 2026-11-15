@@ -148,11 +148,12 @@ class RowsTests(unittest.TestCase):
 
 
 class RetryTests(unittest.TestCase):
-    def test_three_attempts_then_dead(self):
+    def test_backs_off_to_hourly_retries_never_stops(self):
         self.assertEqual(service.failure_plan(None, 0), (1, "pending", 60))
         self.assertEqual(service.failure_plan("pending", 1), (2, "pending", 300))
-        self.assertEqual(service.failure_plan("pending", 2), (3, "dead", None))
-        self.assertEqual(service.failure_plan("dead", 3), (4, "dead", None))
+        self.assertEqual(service.failure_plan("pending", 2), (3, "pending", 3600))
+        self.assertEqual(service.failure_plan("pending", 7), (8, "pending", 3600))
+        self.assertEqual(service.failure_plan("dead", 3), (4, "pending", 3600))  # rows left from the old policy
 
     def test_resolved_resets_attempts(self):
         self.assertEqual(service.failure_plan("resolved", 2), (1, "pending", 60))

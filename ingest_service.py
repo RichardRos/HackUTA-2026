@@ -374,8 +374,8 @@ def run_command(
 
 def failure_plan(status: str | None, attempts: int):
     next_attempt = 1 if status in (None, "resolved") else attempts + 1
-    if next_attempt >= 3:
-        return next_attempt, "dead", None
+    if next_attempt >= 3:  # keep trying hourly: a rate limit or outage clears, and dead used to mean stopped for good
+        return next_attempt, "pending", 3600
     return next_attempt, "pending", 60 if next_attempt == 1 else 300
 
 

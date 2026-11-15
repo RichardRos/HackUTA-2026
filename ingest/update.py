@@ -24,6 +24,7 @@ Scheduled hourly by the ingest container (ingest_service.py job grid_weather; se
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -181,6 +182,9 @@ def main() -> None:
         sys.exit(f"unknown part(s): {bad}")
 
     c.load_env()
+    if "subba" in parts and not os.getenv("EIA_API_KEY"):
+        parts.remove("subba")  # its ~30 pages trip DEMO_KEY's rate limit every run and failed the whole job
+        c.log("subba skipped: set EIA_API_KEY (free, eia.gov/opendata/register.php)")
     now = c.utcnow()
     failed = False
     with c.connect() as conn:
