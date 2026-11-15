@@ -31,6 +31,10 @@ python db/run_sql.py -c "SELECT * FROM scoreboard_summary"
 | `03_scoreboard.sql` | Fair head-to-head scoreboard views |
 | `04_backtest.sql` | Backtest views and integrity checks |
 | `05_api.sql` | Latest-run index and `latest_forecast` view |
+| `06_prediction_markets.sql` | Normalized Kalshi/Polymarket markets and outcomes |
+| `07_rss_feeds.sql` | WSJ + FT RSS feeds: `rss_feeds` (latest raw XML) and `rss_articles` (normalized, idempotent) |
+| `08_open_observations.sql` | NOAA/FRED/CFTC/port-condition/freight-rate time-series observations |
+| `09_ingest_monitoring.sql` | Ingest runs, retries/DLQ, data checks, and service health |
 | `99_clear_fake.sql` | Deletes the fake data. **Run it BEFORE the real backfill.** |
 
 `run_sql.py` runs each statement with autocommit, like `psql -f`. Continuous aggregates can't be created inside a transaction.
