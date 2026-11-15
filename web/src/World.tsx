@@ -93,7 +93,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
     }
     let live = true
     setTideStatus('loading')
-    // Predictions cover yesterday to +2 days, so one load lasts the session; refresh every 6 h anyway.
+    // A cold server cache takes ~25 s (hundreds of NOAA stations). Predictions cover yesterday to +2 days, so one load lasts the session; refresh every 6 h anyway.
     const load = () => api<TideOverview>('/tides')
       .then((r) => {
         if (!live) return
@@ -378,6 +378,7 @@ export default function World({ greekMode = false }: { greekMode?: boolean }) {
       <Suspense fallback={null}>
         <Earth events={markers} selected={selected} onSelect={selectEvent} onCountry={pickCountry} ships={ships} onShip={pickShip} planes={planes} onPlane={pickPlane} track={mmsi ? track : undefined} focusAt={focused ? focusAt : null} greekMode={greekMode}
           weather={weatherLayer === 'off' ? null : weatherGrid} marine={marineGrid}
+          temperature={weatherLayer === 'weather'}
           windAndSurf={weatherLayer === 'wind' && marineStatus === 'ready'}
           tides={showTides ? tides : NO_TIDES} onTide={pickTide} />
       </Suspense>

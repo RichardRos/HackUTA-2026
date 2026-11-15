@@ -1,7 +1,7 @@
 import type { GlobeMethods } from 'react-globe.gl'
 import { BufferAttribute, BufferGeometry, Points, ShaderMaterial, Vector3 } from 'three'
 
-/** One predicted high or low from GET /api/tides (tides.py). Heights in metres above MLLW. */
+/** One predicted high or low from GET /api/tides (tides.py). Heights in metres above the station's datum. */
 export type TideEvent = { t: string; v: number; type?: 'H' | 'L' }
 export type TideStation = {
   id: string
@@ -10,6 +10,9 @@ export type TideStation = {
   lat: number
   lon: number
   tide_type: string | null
+  kind: 'gauge' | 'harmonic' | 'model' // NOAA live gauge, NOAA prediction-only, global tide model
+  datum: 'MLLW' | 'MSL'
+  source: string
   events: TideEvent[]
 }
 export type TideOverview = { stations: TideStation[]; fetched_at: string; window: { start: string; end: string } }
@@ -113,7 +116,8 @@ const fragment = /* glsl */ `
     vec3 color = water * (0.55 + 0.45 * wet) + vec3(0.85, 0.97, 1.0) * crest * 0.6;
     color = mix(color, water, ring * (1.0 - inside));
     color = mix(color, vec3(0.86, 0.95, 0.98), rim * 0.85); // the gauge outline always reads
-    float alpha = max(max(wet * 0.92, inside * 0.25), max(rim * 0.9, ring * 0.75));
+    color = mix(color, vec3(0.03, 0.07, 0.10), inside * (1.0 - wet) * (1.0 - rim) * 0.75); // dry part: dark well
+    float alpha = max(max(wet * 0.92, inside * 0.7), max(rim * 0.9, ring * 0.75));
     alpha = max(alpha, crest * 0.95);
     if (alpha < 0.01) discard;
     gl_FragColor = vec4(color, alpha);
