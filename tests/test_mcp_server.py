@@ -322,7 +322,7 @@ class SearchSummaryTests(unittest.TestCase):
         for out in ({"text": "S", "source_ids": [7, 0]}, {"text": "  ", "source_ids": [1]}):
             with patch("mcp_server.gemini_json", return_value=out):
                 self.assertEqual(summarize_search_results({"news": [NEWS_ROW]}),
-                                 {"error": "AI summary is unavailable right now."})
+                                 {"error": "No result here speaks directly to that search, so there is no summary."})
 
     def test_gemini_failure_returns_error_object(self):
         with patch("mcp_server.gemini_json", side_effect=RuntimeError("upstream 500")):

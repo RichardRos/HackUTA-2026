@@ -320,6 +320,8 @@ SUMMARY_SCHEMA = {
     "required": ["text", "source_ids"],
 }
 SUMMARY_ERROR = {"error": "AI summary is unavailable right now."}
+# Gemini answered but cited nothing real: the rows matched keywords, not the question. Not an outage.
+SUMMARY_NO_MATCH = {"error": "No result here speaks directly to that search, so there is no summary."}
 WEB_URL_PREFIXES = ("http://", "https://")
 
 
@@ -382,7 +384,7 @@ EVIDENCE: {json.dumps(evidence, default=str)[:12000]}"""
             if ident in by_id and ident not in ids:
                 ids.append(ident)
         if not text or not ids:
-            return dict(SUMMARY_ERROR)
+            return dict(SUMMARY_NO_MATCH)
         # Titles and URLs always come from our rows, never from the model.
         return {"text": text, "sources": [
             {key: by_id[ident][key] for key in ("id", "kind", "title", "url", "source")}
